@@ -1,16 +1,17 @@
 use crate::lexer::token_kind::{Delimiter, Keyword, Literal, Punct};
-use crate::lexer::{Token, TokenKind};
+use crate::lexer::{LexerError, Token, TokenKind};
+use crate::Session;
 use miette::SourceSpan;
 
-pub struct Lexer {
-    source: String,
+pub struct Lexer<'sess> {
+    session: &'sess Session,
     position: usize,
 }
 
-impl Lexer {
-    pub fn new(source: impl Into<String>) -> Self {
+impl<'sess> Lexer<'sess> {
+    pub fn new(session: &'sess Session) -> Self {
         Self {
-            source: source.into(),
+            session,
             position: 0,
         }
     }
@@ -68,7 +69,16 @@ impl Lexer {
                             match self.advance() {
                                 Some('/') if self.match_char('*') => depth += 1,
                                 Some('*') if self.match_char('/') => depth += 1,
-                                None => panic!(),
+                                None => {
+                                    self.session.push_error(
+                                        LexerError::UnterminatedComment {
+                                            src: self.session.get_named_source(),
+                                            span: (start, 1).into(),
+                                        }
+                                        .into(),
+                                    );
+                                    break;
+                                }
                                 _ => {}
                             }
                         }
@@ -132,7 +142,17 @@ impl Lexer {
                     continue;
                 }
                 c if self.is_ident_start(c) => self.lex_identifier(),
-                _ => panic!("Unexpected character: {}", c),
+                c => {
+                    self.session.push_error(
+                        LexerError::UnexpectedCharacter {
+                            src: self.session.get_named_source(),
+                            character: c,
+                            span: start.into(),
+                        }
+                        .into(),
+                    );
+                    continue;
+                }
             };
 
             let token = Token::new(kind, SourceSpan::from((start, self.position)));
@@ -148,6 +168,7 @@ impl Lexer {
 
     fn lex_string(&mut self) -> TokenKind {
         let mut value = String::new();
+        let start_quote = self.position;
         while let Some(c) = self.peek() {
             self.advance();
             match c {
@@ -160,18 +181,38 @@ impl Lexer {
                             'r' => value.push('\r'),
                             '\\' => value.push('\\'),
                             '"' => value.push('"'),
-                            _ => panic!("Invalid escape sequence: \\{}", next),
+                            _ => self.session.push_error(
+                                LexerError::InvalidEscapeCharacter {
+                                    src: self.session.get_named_source(),
+                                    span: (self.position - 1).into(),
+                                    character: next,
+                                }
+                                .into(),
+                            ),
                         }
                     }
                 }
                 _ => value.push(c),
             }
         }
-        panic!("Unterminated string literal");
+        self.session.push_error(
+            LexerError::UnterminatedString {
+                src: self.session.get_named_source(),
+                span: (start_quote - 1).into(),
+            }
+            .into(),
+        );
+        TokenKind::Literal(Literal::Str(value))
     }
 
     fn lex_number(&mut self) -> TokenKind {
-        let mut value = String::from(self.source.chars().nth(self.position - 1).unwrap());
+        let mut value = String::from(
+            self.session
+                .get_source()
+                .chars()
+                .nth(self.position - 1)
+                .unwrap(),
+        );
         let mut has_dot = false;
 
         while let Some(c) = self.peek() {
@@ -197,7 +238,7 @@ impl Lexer {
     }
 
     fn check_suffix(&mut self, suffix: &str) -> bool {
-        let remaining = &self.source[self.position..];
+        let remaining = &self.session.get_source()[self.position..];
         if remaining.starts_with(suffix) {
             self.position += suffix.len();
             true
@@ -208,7 +249,13 @@ impl Lexer {
 
     fn lex_identifier(&mut self) -> TokenKind {
         let mut value = String::new();
-        value.push(self.source.chars().nth(self.position - 1).unwrap());
+        value.push(
+            self.session
+                .get_source()
+                .chars()
+                .nth(self.position - 1)
+                .unwrap(),
+        );
 
         while let Some(c) = self.peek() {
             if self.is_ident_continue(c) {
@@ -279,7 +326,7 @@ impl Lexer {
     }
 
     fn peek(&self) -> Option<char> {
-        self.source[self.position..].chars().next()
+        self.session.get_source()[self.position..].chars().next()
     }
 
     fn advance(&mut self) -> Option<char> {

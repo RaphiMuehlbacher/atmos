@@ -1,1 +1,3 @@
-fn main (){ let *a = 332.3u32; }
+fn main() {
+    let a = 3;
+}
