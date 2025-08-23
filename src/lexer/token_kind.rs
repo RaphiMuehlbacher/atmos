@@ -33,6 +33,7 @@ pub enum Punct {
     Star,       // '*'
     Slash,      // '/'
     Percent,    // '%'
+    Ampersand,  // '&'
     PlusEq,     // '+='
     MinusEq,    // '-='
     StarEq,     // '*='
@@ -133,6 +134,7 @@ impl Display for Punct {
             Punct::Star => "*",
             Punct::Slash => "/",
             Punct::Percent => "%",
+            Punct::Ampersand => "&",
             Punct::PlusEq => "+=",
             Punct::MinusEq => "-=",
             Punct::StarEq => "*=",
