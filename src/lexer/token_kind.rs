@@ -85,6 +85,7 @@ pub enum Keyword {
     Use,      // 'use'
     Where,    // 'where'
     Extern,   // 'extern'
+    Const,    // 'const'
 }
 
 impl Display for TokenKind {
@@ -190,6 +191,7 @@ impl Display for Keyword {
             Keyword::Use => "use",
             Keyword::Where => "where",
             Keyword::Extern => "extern",
+            Keyword::Const => "const",
         };
         write!(f, "{}", s)
     }

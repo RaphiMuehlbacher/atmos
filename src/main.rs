@@ -1,4 +1,4 @@
-use atmos::{Lexer, Session};
+use atmos::{Lexer, Parser, Session};
 use miette::{GraphicalReportHandler, NamedSource};
 use std::fs;
 
@@ -11,8 +11,9 @@ fn main() {
     let mut lexer = Lexer::new(&session);
     let tokens = lexer.tokenize();
 
+    let mut parser = Parser::new(&session, tokens);
+    let ast = parser.parse_crate();
+
     session.emit_all();
-    for token in &tokens {
-        println!("{token:?}");
-    }
+    println!("{ast:?}");
 }

@@ -1,3 +1,1 @@
-fn main() {
-    let a = /*"hi;
-}
+fn test<A: Copy + std::Clone, const B: i32>() {}

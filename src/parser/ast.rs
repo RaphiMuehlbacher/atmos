@@ -45,6 +45,12 @@ impl Ident {
     }
 }
 
+impl PartialEq<&str> for Ident {
+    fn eq(&self, other: &&str) -> bool {
+        self.name == *other
+    }
+}
+
 /// e.g. std::cmp::PartialEq
 #[derive(Debug, Clone)]
 pub struct Path {
@@ -60,7 +66,9 @@ pub struct PathSegment {
 
 #[derive(Debug, Clone)]
 pub enum GenericArg {
+    /// `Bar` in `Foo<Bar>`
     Type(AstNode<Ty>),
+    /// `1` in `Foo<const 1>`
     Const(Box<AstNode<Expr>>),
 }
 
@@ -99,24 +107,29 @@ pub enum AssociatedItem {
 
 #[derive(Debug, Clone)]
 pub struct Crate {
-    pub stmts: Vec<Stmt>,
+    pub items: Vec<AstNode<Item>>,
     pub span: SourceSpan,
-    pub ast_id: AstId,
 }
 
 #[derive(Debug, Clone)]
 pub enum Stmt {
+    Item(Item),
     Let(LetStmt),
+    Expr(ExprStmt),
+    Semi(ExprStmt),
+}
+
+#[derive(Debug, Clone)]
+pub enum Item {
     Enum(EnumDecl),
     Struct(StructDecl),
     Trait(TraitDecl),
     Impl(ImplDecl),
     Fn(FnDecl),
+    ExternFn(ExternFnDecl),
     Const(ConstDecl),
     Use(UseItem),
     TyAlias(TyAliasDecl),
-    Expr(ExprStmt),
-    Semi(ExprStmt),
 }
 
 #[derive(Debug, Clone)]
@@ -136,12 +149,18 @@ pub struct FnDecl {
 }
 
 #[derive(Debug, Clone)]
+pub struct ExternFnDecl {
+    /// Span of the 'extern' keyword
+    pub span: SourceSpan,
+    pub sig: AstNode<FnSig>,
+}
+
+#[derive(Debug, Clone)]
 pub struct FnSig {
     pub ident: AstNode<Ident>,
     pub generics: Vec<AstNode<GenericParam>>,
     pub params: Vec<AstNode<Param>>,
     pub return_ty: Option<AstNode<Ty>>,
-    pub is_extern: Option<SourceSpan>,
 }
 
 #[derive(Debug, Clone)]
@@ -160,12 +179,12 @@ pub struct ConstDecl {
 pub struct GenericParam {
     pub ident: AstNode<Ident>,
     pub bounds: Vec<AstNode<Path>>,
-    pub kind: AstNode<GenericParamKind>,
+    pub kind: GenericParamKind,
 }
 
 #[derive(Debug, Clone)]
 pub enum GenericParamKind {
-    Const,
+    Const(AstNode<Ty>),
     Type,
 }
 

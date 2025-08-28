@@ -4,8 +4,8 @@ use std::fmt::{Display, Formatter, Result};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Token {
-    kind: TokenKind,
-    span: SourceSpan,
+    pub kind: TokenKind,
+    pub span: SourceSpan,
 }
 
 impl Token {
