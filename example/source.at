@@ -1,1 +1,1 @@
-fn test<A: Copy + std::Clone, const B: i32>() {}
+fn test)

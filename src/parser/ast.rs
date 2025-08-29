@@ -1,7 +1,10 @@
+use crate::extension::SourceSpanExt;
 use miette::SourceSpan;
 
 #[derive(Copy, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct AstId(usize);
+
+static mut AST_ID: usize = 0;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct AstNode<T> {
@@ -10,21 +13,16 @@ pub struct AstNode<T> {
     pub ast_id: AstId,
 }
 
-static mut AST_ID: usize = 0;
-
 impl<T> AstNode<T> {
     pub fn new(node: T, span: SourceSpan) -> Self {
-        let ast_id = unsafe {
-            let id = AST_ID;
-            AST_ID += 1;
-            id
-        };
-        Self {
-            node,
-            span,
-            ast_id: AstId(ast_id),
-        }
+        let ast_id = Self::fresh_ast_id();
+        Self { node, span, ast_id }
     }
+
+    pub fn err(node: T) -> Self {
+        AstNode::new(node, SourceSpan::err_span())
+    }
+
     pub fn fresh_ast_id() -> AstId {
         unsafe {
             let id = AST_ID;
@@ -42,6 +40,11 @@ pub struct Ident {
 impl Ident {
     pub fn new(name: String) -> Self {
         Self { name }
+    }
+    pub fn err() -> Self {
+        Self {
+            name: "err".to_string(),
+        }
     }
 }
 
@@ -117,19 +120,21 @@ pub enum Stmt {
     Let(LetStmt),
     Expr(ExprStmt),
     Semi(ExprStmt),
+    Err,
 }
 
 #[derive(Debug, Clone)]
 pub enum Item {
-    Enum(EnumDecl),
+    Fn(FnDecl),
     Struct(StructDecl),
+    Enum(EnumDecl),
     Trait(TraitDecl),
     Impl(ImplDecl),
-    Fn(FnDecl),
     ExternFn(ExternFnDecl),
     Const(ConstDecl),
     Use(UseItem),
     TyAlias(TyAliasDecl),
+    Err,
 }
 
 #[derive(Debug, Clone)]
@@ -172,7 +177,9 @@ pub struct Param {
 #[derive(Debug, Clone)]
 pub struct ConstDecl {
     pub ident: AstNode<Ident>,
+    pub generics: Vec<GenericParam>,
     pub type_annotation: Option<AstNode<Ty>>,
+    pub expr: Option<AstNode<Expr>>,
 }
 
 #[derive(Debug, Clone)]
@@ -281,6 +288,7 @@ pub enum Expr {
     Block(BlockExpr),
     Match(MatchExpr),
     Let(LetExpr),
+    Err,
 }
 
 #[derive(Debug, Clone)]

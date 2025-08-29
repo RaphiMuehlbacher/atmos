@@ -71,6 +71,7 @@ pub enum Keyword {
     Continue, // 'continue'
     Struct,   // 'struct'
     Enum,     // 'enum'
+    Trait,    // 'trait'
     Match,    // 'match'
     Impl,     // 'impl'
     Pub,      // 'pub'
@@ -177,6 +178,7 @@ impl Display for Keyword {
             Keyword::Continue => "continue",
             Keyword::Struct => "struct",
             Keyword::Enum => "enum",
+            Keyword::Trait => "trait",
             Keyword::Match => "match",
             Keyword::Impl => "impl",
             Keyword::Pub => "pub",

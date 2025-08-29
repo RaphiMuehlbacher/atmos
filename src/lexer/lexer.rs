@@ -155,13 +155,13 @@ impl<'sess> Lexer<'sess> {
                 }
             };
 
-            let token = Token::new(kind, SourceSpan::from((start, self.position)));
+            let token = Token::new(kind, SourceSpan::from((start, self.position - start)));
             tokens.push(token);
         }
 
         tokens.push(Token::new(
             TokenKind::EOF,
-            SourceSpan::from((self.position, self.position)),
+            SourceSpan::from((self.position - 1, 1)),
         ));
         tokens
     }
@@ -279,6 +279,7 @@ impl<'sess> Lexer<'sess> {
             "continue" => TokenKind::Keyword(Keyword::Continue),
             "struct" => TokenKind::Keyword(Keyword::Struct),
             "enum" => TokenKind::Keyword(Keyword::Enum),
+            "trait" => TokenKind::Keyword(Keyword::Trait),
             "match" => TokenKind::Keyword(Keyword::Match),
             "impl" => TokenKind::Keyword(Keyword::Impl),
             "pub" => TokenKind::Keyword(Keyword::Pub),

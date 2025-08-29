@@ -1,11 +1,13 @@
+use crate::error::CompilerError;
 use crate::extension::SourceSpanExt;
 use crate::lexer::token_kind::{Delimiter, Keyword, Literal, Punct};
 use crate::lexer::{Token, TokenKind};
 use crate::parser::ast::{
     AstNode, Crate, Expr, FnDecl, FnSig, GenericArg, GenericParam, GenericParamKind, Ident, Item,
-    Path, PathSegment, Ty,
+    Path, PathSegment, Stmt, Ty,
 };
 use crate::parser::ParserError;
+use crate::parser::ParserError::UnexpectedClosingDelimiter;
 use crate::Session;
 
 type PResult<T> = Result<T, ParserError>;
@@ -14,7 +16,9 @@ pub struct Parser<'a> {
     session: &'a Session,
     tokens: Vec<Token>,
     position: usize,
+    delimiter_stack: Vec<Token>,
 }
+
 impl<'a> Parser<'a> {
     fn current(&self) -> &Token {
         &self.tokens[self.position]
@@ -72,26 +76,163 @@ impl<'a> Parser<'a> {
 }
 
 impl<'a> Parser<'a> {
+    fn open_delimiter(&mut self, open_delimiter: TokenKind) {
+        let token = self.current().clone();
+
+        if token.kind != open_delimiter {
+            self.emit(ParserError::UnexpectedToken {
+                src: self.session.get_named_source(),
+                span: token.span,
+                found: token.kind,
+                expected: open_delimiter,
+            });
+            self.advance();
+            return;
+        }
+
+        match open_delimiter {
+            TokenKind::OpeningDelimiter(_) => {
+                self.delimiter_stack
+                    .push(Token::new(open_delimiter, token.span));
+                self.advance();
+            }
+            found => {
+                self.emit(ParserError::UnexpectedToken {
+                    src: self.session.get_named_source(),
+                    span: token.span,
+                    found,
+                    expected: TokenKind::EOF,
+                });
+                self.advance();
+            }
+        }
+    }
+
+    fn close_delimiter(&mut self, close_delimiter: TokenKind) {
+        let token = self.current().clone();
+
+        if token.kind != close_delimiter {
+            self.emit(ParserError::UnexpectedToken {
+                src: self.session.get_named_source(),
+                span: token.span,
+                found: token.kind,
+                expected: close_delimiter,
+            });
+            self.advance();
+            return;
+        }
+
+        if self.delimiter_stack.is_empty() {
+            self.emit(UnexpectedClosingDelimiter {
+                src: self.session.get_named_source(),
+                span: token.span,
+                found_delimiter: token.kind,
+            });
+            self.advance();
+            return;
+        }
+
+        let open_delim = self.delimiter_stack.pop().unwrap();
+        let expected_closing = match open_delim.kind {
+            TokenKind::OpeningDelimiter(Delimiter::Paren) => {
+                TokenKind::ClosingDelimiter(Delimiter::Paren)
+            }
+            TokenKind::OpeningDelimiter(Delimiter::Bracket) => {
+                TokenKind::ClosingDelimiter(Delimiter::Bracket)
+            }
+            TokenKind::OpeningDelimiter(Delimiter::Brace) => {
+                TokenKind::ClosingDelimiter(Delimiter::Brace)
+            }
+            _ => unreachable!(),
+        };
+
+        if close_delimiter != expected_closing {
+            self.emit(ParserError::MismatchedDelimiter {
+                src: self.session.get_named_source(),
+                closing_span: token.span,
+                opening_span: open_delim.span,
+                found: token.kind,
+                expected: close_delimiter,
+            })
+        }
+    }
+    fn emit(&mut self, error: ParserError) {
+        self.session.push_error(CompilerError::ParserError(error))
+    }
+
+    fn recover_item(&mut self) -> AstNode<Item> {
+        while !self.at_eof() && !self.token_begins_item() {
+            self.advance();
+        }
+        AstNode::err(Item::Err)
+    }
+
+    fn recover_stmt(&mut self) -> AstNode<Stmt> {
+        while !self.at_eof() && !self.token_ends_stmt() {
+            self.advance();
+        }
+        AstNode::err(Stmt::Err)
+    }
+
+    fn token_ends_stmt(&self) -> bool {
+        matches!(
+            self.current().kind,
+            TokenKind::Punctuation(Punct::Semicolon)
+                | TokenKind::ClosingDelimiter(Delimiter::Brace)
+        )
+    }
+
+    fn token_begins_item(&self) -> bool {
+        matches!(
+            self.current().kind,
+            TokenKind::Keyword(Keyword::Fn)
+                | TokenKind::Keyword(Keyword::Struct)
+                | TokenKind::Keyword(Keyword::Enum)
+                | TokenKind::Keyword(Keyword::Impl)
+                | TokenKind::Keyword(Keyword::Trait)
+                | TokenKind::Keyword(Keyword::Extern)
+                | TokenKind::Keyword(Keyword::Const)
+                | TokenKind::Keyword(Keyword::Use)
+                | TokenKind::Keyword(Keyword::Type)
+        )
+    }
+}
+
+impl<'a> Parser<'a> {
     pub fn new(session: &'a Session, tokens: Vec<Token>) -> Self {
         Self {
             session,
             tokens,
             position: 0,
+            delimiter_stack: vec![],
         }
     }
 
     pub fn parse_crate(&mut self) -> Crate {
         let lo = self.current().span;
         let mut items = vec![];
-        while let Ok(item) = self.parse_item() {
-            items.push(item);
+
+        while !self.at_eof() {
+            items.push(self.parse_item());
         }
+
         Crate {
             items,
             span: lo.to(self.previous().span),
         }
     }
-    fn parse_item(&mut self) -> PResult<AstNode<Item>> {
+
+    fn parse_item(&mut self) -> AstNode<Item> {
+        match self.parse_item_without_recovery() {
+            Ok(item) => item,
+            Err(err) => {
+                self.session.push_error(CompilerError::ParserError(err));
+                self.recover_item()
+            }
+        }
+    }
+
+    fn parse_item_without_recovery(&mut self) -> PResult<AstNode<Item>> {
         if self.check(&[TokenKind::Keyword(Keyword::Fn)]) {
             self.parse_fn_item()
         } else {
@@ -119,11 +260,12 @@ impl<'a> Parser<'a> {
 
         let ident = self.parse_ident()?;
         let generics = self.parse_generic_params()?;
-        dbg!(&generics);
 
-        if !self.consume(&[TokenKind::OpeningDelimiter(Delimiter::Paren)]) {
-            panic!()
-        }
+        self.open_delimiter(TokenKind::OpeningDelimiter(Delimiter::Paren));
+        self.close_delimiter(TokenKind::ClosingDelimiter(Delimiter::Paren));
+
+        dbg!(&self.delimiter_stack);
+        self.session.error_handler.borrow().emit_all();
 
         Ok(AstNode::new(
             FnSig {
@@ -322,7 +464,14 @@ impl<'a> Parser<'a> {
                     lo.to(self.previous().span),
                 ))
             }
-            _ => Err(todo!()),
+            found => {
+                self.emit(ParserError::ExpectedIdentifier {
+                    src: self.session.get_named_source(),
+                    found: found.clone(),
+                    span: token.span,
+                });
+                Ok(AstNode::err(Ident::err()))
+            }
         }
     }
 
