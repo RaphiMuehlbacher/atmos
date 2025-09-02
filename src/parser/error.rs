@@ -16,8 +16,17 @@ pub enum ParserError {
         found: TokenKind,
     },
 
+    #[error("Missing paramaters for function definition")]
+    #[diagnostic(code(parser::missing_function_params), help("Add a parameter list"))]
+    MissingFnParams {
+        #[source_code]
+        src: NamedSource<String>,
+
+        #[label("add it here")]
+        span: SourceSpan,
+    },
     #[error("Expected {expected}, found `{found}`")]
-    #[diagnostic(code(parser::unexpected_identifier))]
+    #[diagnostic(code(parser::unexpected_token))]
     UnexpectedToken {
         #[source_code]
         src: NamedSource<String>,

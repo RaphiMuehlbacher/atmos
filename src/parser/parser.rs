@@ -1,14 +1,13 @@
+use crate::Session;
 use crate::error::CompilerError;
 use crate::extension::SourceSpanExt;
 use crate::lexer::token_kind::{Delimiter, Keyword, Literal, Punct};
 use crate::lexer::{Token, TokenKind};
+use crate::parser::ParserError;
 use crate::parser::ast::{
     AstNode, Crate, Expr, FnDecl, FnSig, GenericArg, GenericParam, GenericParamKind, Ident, Item,
-    Path, PathSegment, Stmt, Ty,
+    Param, Path, PathSegment, Ty,
 };
-use crate::parser::ParserError;
-use crate::parser::ParserError::UnexpectedClosingDelimiter;
-use crate::Session;
 
 type PResult<T> = Result<T, ParserError>;
 
@@ -16,7 +15,6 @@ pub struct Parser<'a> {
     session: &'a Session,
     tokens: Vec<Token>,
     position: usize,
-    delimiter_stack: Vec<Token>,
 }
 
 impl<'a> Parser<'a> {
@@ -33,7 +31,7 @@ impl<'a> Parser<'a> {
     }
 
     fn at_eof(&self) -> bool {
-        self.current().kind == TokenKind::EOF
+        self.current_is(&TokenKind::EOF)
     }
 
     fn advance(&mut self) {
@@ -42,8 +40,8 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn current_is(&self, kind: TokenKind) -> bool {
-        match (&self.current().kind, &kind) {
+    fn current_is(&self, kind: &TokenKind) -> bool {
+        match (&self.current().kind, kind) {
             (TokenKind::Literal(Literal::I32(_)), TokenKind::Literal(Literal::I32(_))) => true,
             (TokenKind::Literal(Literal::U32(_)), TokenKind::Literal(Literal::U32(_))) => true,
             (TokenKind::Literal(Literal::F64(_)), TokenKind::Literal(Literal::F64(_))) => true,
@@ -56,7 +54,7 @@ impl<'a> Parser<'a> {
     /// token to check is `current`
     fn check(&self, kinds: &[TokenKind]) -> bool {
         for kind in kinds {
-            if self.current_is(kind.clone()) {
+            if self.current_is(kind) {
                 return true;
             }
         }
@@ -66,7 +64,7 @@ impl<'a> Parser<'a> {
     /// token to consume is `current`
     fn consume(&mut self, kinds: &[TokenKind]) -> bool {
         for kind in kinds {
-            if self.current_is(kind.clone()) {
+            if self.current_is(kind) {
                 self.advance();
                 return true;
             }
@@ -76,127 +74,114 @@ impl<'a> Parser<'a> {
 }
 
 impl<'a> Parser<'a> {
-    fn open_delimiter(&mut self, open_delimiter: TokenKind) {
-        let token = self.current().clone();
+    fn expect_delimiter<T, F>(&mut self, open: TokenKind, close: TokenKind, mut parse_inner: F) -> T
+    where
+        F: FnMut(&mut Self) -> T,
+    {
+        let open_span = self.current().span;
+        let mut err_emitted = false;
 
-        if token.kind != open_delimiter {
+        if self.current_is(&open) {
+            self.advance();
+        } else {
             self.emit(ParserError::UnexpectedToken {
                 src: self.session.get_named_source(),
-                span: token.span,
-                found: token.kind,
-                expected: open_delimiter,
+                span: self.current().span,
+                found: self.current().kind.clone(),
+                expected: open,
             });
-            self.advance();
-            return;
-        }
 
-        match open_delimiter {
-            TokenKind::OpeningDelimiter(_) => {
-                self.delimiter_stack
-                    .push(Token::new(open_delimiter, token.span));
-                self.advance();
-            }
-            found => {
-                self.emit(ParserError::UnexpectedToken {
-                    src: self.session.get_named_source(),
-                    span: token.span,
-                    found,
-                    expected: TokenKind::EOF,
-                });
+            err_emitted = true;
+
+            if self.is_junk_for_delim(&self.current().kind.clone()) {
                 self.advance();
             }
         }
+
+        let inner = parse_inner(self);
+
+        if self.current_is(&close) {
+            self.advance();
+        } else if !err_emitted {
+            match &self.current().kind {
+                TokenKind::EOF => {
+                    panic!("create error for unclosed delimiter");
+                }
+                other_delimiter if matches!(other_delimiter, TokenKind::ClosingDelimiter(_)) => {
+                    self.emit(ParserError::MismatchedDelimiter {
+                        src: self.session.get_named_source(),
+                        closing_span: self.current().span,
+                        opening_span: open_span,
+                        found: other_delimiter.clone(),
+                        expected: close,
+                    });
+                    self.advance();
+                }
+                other => {
+                    self.emit(ParserError::UnexpectedToken {
+                        src: self.session.get_named_source(),
+                        span: self.current().span,
+                        found: other.clone(),
+                        expected: close,
+                    });
+                }
+            }
+        }
+        inner
     }
 
-    fn close_delimiter(&mut self, close_delimiter: TokenKind) {
-        let token = self.current().clone();
-
-        if token.kind != close_delimiter {
-            self.emit(ParserError::UnexpectedToken {
-                src: self.session.get_named_source(),
-                span: token.span,
-                found: token.kind,
-                expected: close_delimiter,
-            });
-            self.advance();
-            return;
-        }
-
-        if self.delimiter_stack.is_empty() {
-            self.emit(UnexpectedClosingDelimiter {
-                src: self.session.get_named_source(),
-                span: token.span,
-                found_delimiter: token.kind,
-            });
-            self.advance();
-            return;
-        }
-
-        let open_delim = self.delimiter_stack.pop().unwrap();
-        let expected_closing = match open_delim.kind {
-            TokenKind::OpeningDelimiter(Delimiter::Paren) => {
-                TokenKind::ClosingDelimiter(Delimiter::Paren)
-            }
-            TokenKind::OpeningDelimiter(Delimiter::Bracket) => {
-                TokenKind::ClosingDelimiter(Delimiter::Bracket)
-            }
-            TokenKind::OpeningDelimiter(Delimiter::Brace) => {
-                TokenKind::ClosingDelimiter(Delimiter::Brace)
-            }
-            _ => unreachable!(),
-        };
-
-        if close_delimiter != expected_closing {
-            self.emit(ParserError::MismatchedDelimiter {
-                src: self.session.get_named_source(),
-                closing_span: token.span,
-                opening_span: open_delim.span,
-                found: token.kind,
-                expected: close_delimiter,
-            })
+    fn is_junk_for_delim(&mut self, token: &TokenKind) -> bool {
+        match token {
+            TokenKind::ClosingDelimiter(_) | TokenKind::OpeningDelimiter(_) => false,
+            TokenKind::Ident(_) | TokenKind::Literal(_) => false,
+            TokenKind::Keyword(_) => true,
+            // TokenKind::Punctuation(Punct::Less) | TokenKind::Punctuation(Punct::Greater) => false,
+            TokenKind::Punctuation(_) => true,
+            _ => false,
         }
     }
+
     fn emit(&mut self, error: ParserError) {
         self.session.push_error(CompilerError::ParserError(error))
     }
-
-    fn recover_item(&mut self) -> AstNode<Item> {
-        while !self.at_eof() && !self.token_begins_item() {
-            self.advance();
-        }
-        AstNode::err(Item::Err)
-    }
-
-    fn recover_stmt(&mut self) -> AstNode<Stmt> {
-        while !self.at_eof() && !self.token_ends_stmt() {
-            self.advance();
-        }
-        AstNode::err(Stmt::Err)
-    }
-
-    fn token_ends_stmt(&self) -> bool {
-        matches!(
-            self.current().kind,
-            TokenKind::Punctuation(Punct::Semicolon)
-                | TokenKind::ClosingDelimiter(Delimiter::Brace)
-        )
-    }
-
-    fn token_begins_item(&self) -> bool {
-        matches!(
-            self.current().kind,
-            TokenKind::Keyword(Keyword::Fn)
-                | TokenKind::Keyword(Keyword::Struct)
-                | TokenKind::Keyword(Keyword::Enum)
-                | TokenKind::Keyword(Keyword::Impl)
-                | TokenKind::Keyword(Keyword::Trait)
-                | TokenKind::Keyword(Keyword::Extern)
-                | TokenKind::Keyword(Keyword::Const)
-                | TokenKind::Keyword(Keyword::Use)
-                | TokenKind::Keyword(Keyword::Type)
-        )
-    }
 }
+//
+// fn recover_item(&mut self) -> AstNode<Item> {
+//     while !self.at_eof() && !self.token_begins_item() {
+//         self.advance();
+//     }
+//     AstNode::err(Item::Err)
+// }
+//
+// fn recover_stmt(&mut self) -> AstNode<Stmt> {
+//     while !self.at_eof() && !self.token_ends_stmt() {
+//         self.advance();
+//     }
+//     AstNode::err(Stmt::Err)
+// }
+//
+// fn token_ends_stmt(&self) -> bool {
+//     matches!(
+//         self.current().kind,
+//         TokenKind::Punctuation(Punct::Semicolon)
+//             | TokenKind::ClosingDelimiter(Delimiter::Brace)
+//     )
+// }
+//
+// fn token_begins_item(&self) -> bool {
+//     matches!(
+//         self.current().kind,
+//         TokenKind::Keyword(Keyword::Fn)
+//             | TokenKind::Keyword(Keyword::Struct)
+//             | TokenKind::Keyword(Keyword::Enum)
+//             | TokenKind::Keyword(Keyword::Impl)
+//             | TokenKind::Keyword(Keyword::Trait)
+//             | TokenKind::Keyword(Keyword::Extern)
+//             | TokenKind::Keyword(Keyword::Const)
+//             | TokenKind::Keyword(Keyword::Use)
+//             | TokenKind::Keyword(Keyword::Type)
+//     )
+// }
 
 impl<'a> Parser<'a> {
     pub fn new(session: &'a Session, tokens: Vec<Token>) -> Self {
@@ -204,7 +189,6 @@ impl<'a> Parser<'a> {
             session,
             tokens,
             position: 0,
-            delimiter_stack: vec![],
         }
     }
 
@@ -226,8 +210,9 @@ impl<'a> Parser<'a> {
         match self.parse_item_without_recovery() {
             Ok(item) => item,
             Err(err) => {
-                self.session.push_error(CompilerError::ParserError(err));
-                self.recover_item()
+                self.emit(err);
+                // self.recover_item()
+                todo!()
             }
         }
     }
@@ -259,23 +244,54 @@ impl<'a> Parser<'a> {
         let lo = self.current().span;
 
         let ident = self.parse_ident()?;
-        let generics = self.parse_generic_params()?;
 
-        self.open_delimiter(TokenKind::OpeningDelimiter(Delimiter::Paren));
-        self.close_delimiter(TokenKind::ClosingDelimiter(Delimiter::Paren));
+        let generics = if self.current_is(&TokenKind::Punctuation(Punct::Less)) {
+            self.expect_delimiter(
+                TokenKind::Punctuation(Punct::Less),
+                TokenKind::Punctuation(Punct::Greater),
+                |p| match p.parse_generic_params() {
+                    Ok(g) => g,
+                    Err(err) => {
+                        p.emit(err);
+                        vec![]
+                    }
+                },
+            )
+        } else {
+            vec![]
+        };
 
-        dbg!(&self.delimiter_stack);
-        self.session.error_handler.borrow().emit_all();
+        let params = self.expect_delimiter(
+            TokenKind::OpeningDelimiter(Delimiter::Paren),
+            TokenKind::ClosingDelimiter(Delimiter::Paren),
+            |p| match p.parse_params() {
+                Ok(v) => v,
+                Err(err) => {
+                    p.emit(err);
+                    vec![]
+                }
+            },
+        );
 
         Ok(AstNode::new(
             FnSig {
                 ident,
                 generics,
-                params: todo!(),
+                params: params,
                 return_ty: todo!(),
             },
             lo.to(self.previous().span),
         ))
+    }
+
+    fn parse_params(&mut self) -> PResult<Vec<AstNode<Param>>> {
+        let mut params = vec![];
+
+        loop {
+            let ident = self.parse_ident()?;
+        }
+
+        return Ok(params);
     }
 
     fn parse_generic_params(&mut self) -> PResult<Vec<AstNode<GenericParam>>> {

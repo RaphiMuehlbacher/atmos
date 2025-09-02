@@ -1,6 +1,6 @@
+use crate::Session;
 use crate::lexer::token_kind::{Delimiter, Keyword, Literal, Punct};
 use crate::lexer::{LexerError, Token, TokenKind};
-use crate::Session;
 use miette::SourceSpan;
 
 pub struct Lexer<'sess> {
@@ -310,11 +310,11 @@ impl<'sess> Lexer<'sess> {
     }
 
     fn match_char(&mut self, expected: char) -> bool {
-        if let Some(c) = self.peek() {
-            if c == expected {
-                self.advance();
-                return true;
-            }
+        if let Some(c) = self.peek()
+            && c == expected
+        {
+            self.advance();
+            return true;
         }
         false
     }
