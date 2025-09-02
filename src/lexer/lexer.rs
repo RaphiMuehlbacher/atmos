@@ -128,6 +128,7 @@ impl<'sess> Lexer<'sess> {
                 ',' => TokenKind::Punctuation(Punct::Comma),
                 ';' => TokenKind::Punctuation(Punct::Semicolon),
                 '?' => TokenKind::Punctuation(Punct::Question),
+                '_' => TokenKind::Punctuation(Punct::Underscore),
                 ':' => {
                     if self.match_char(':') {
                         TokenKind::Punctuation(Punct::ColonColon)

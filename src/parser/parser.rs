@@ -6,7 +6,7 @@ use crate::lexer::{Token, TokenKind};
 use crate::parser::ParserError;
 use crate::parser::ast::{
     AstNode, Crate, Expr, FnDecl, FnSig, GenericArg, GenericParam, GenericParamKind, Ident, Item,
-    Param, Path, PathSegment, Ty,
+    Param, Path, PathSegment, Pattern, Ty,
 };
 
 type PResult<T> = Result<T, ParserError>;
@@ -74,12 +74,18 @@ impl<'a> Parser<'a> {
 }
 
 impl<'a> Parser<'a> {
-    fn expect_delimiter<T, F>(&mut self, open: TokenKind, close: TokenKind, mut parse_inner: F) -> T
+    fn parse_seperated_delimited<T, F>(
+        &mut self,
+        open: TokenKind,
+        close: TokenKind,
+        seperator: TokenKind,
+        mut parse_element: F,
+    ) -> Vec<T>
     where
-        F: FnMut(&mut Self) -> T,
+        F: FnMut(&mut Self) -> PResult<T>,
     {
         let open_span = self.current().span;
-        let mut err_emitted = false;
+        let mut delimiter_err_emitted = false;
 
         if self.current_is(&open) {
             self.advance();
@@ -91,18 +97,38 @@ impl<'a> Parser<'a> {
                 expected: open,
             });
 
-            err_emitted = true;
+            delimiter_err_emitted = true;
 
             if self.is_junk_for_delim(&self.current().kind.clone()) {
                 self.advance();
             }
         }
 
-        let inner = parse_inner(self);
+        let mut elements = vec![];
+        loop {
+            if self.current_is(&close) || self.at_eof() {
+                break;
+            }
+
+            match parse_element(self) {
+                Ok(element) => elements.push(element),
+                Err(err) => {
+                    self.emit(err);
+                    self.recover_to_seperator_or_closing(&close, &seperator);
+                }
+            }
+
+            if self.current_is(&seperator) {
+                self.advance();
+            } else if !self.current_is(&close) {
+                todo!("Missing seperator");
+                self.recover_to_seperator_or_closing(&close, &seperator);
+            }
+        }
 
         if self.current_is(&close) {
             self.advance();
-        } else if !err_emitted {
+        } else if !delimiter_err_emitted {
             match &self.current().kind {
                 TokenKind::EOF => {
                     panic!("create error for unclosed delimiter");
@@ -127,7 +153,13 @@ impl<'a> Parser<'a> {
                 }
             }
         }
-        inner
+        elements
+    }
+
+    fn recover_to_seperator_or_closing(&mut self, close: &TokenKind, seperator: &TokenKind) {
+        while !self.at_eof() && !self.current_is(close) && !self.current_is(seperator) {
+            self.advance();
+        }
     }
 
     fn is_junk_for_delim(&mut self, token: &TokenKind) -> bool {
@@ -135,7 +167,6 @@ impl<'a> Parser<'a> {
             TokenKind::ClosingDelimiter(_) | TokenKind::OpeningDelimiter(_) => false,
             TokenKind::Ident(_) | TokenKind::Literal(_) => false,
             TokenKind::Keyword(_) => true,
-            // TokenKind::Punctuation(Punct::Less) | TokenKind::Punctuation(Punct::Greater) => false,
             TokenKind::Punctuation(_) => true,
             _ => false,
         }
@@ -245,33 +276,10 @@ impl<'a> Parser<'a> {
 
         let ident = self.parse_ident()?;
 
-        let generics = if self.current_is(&TokenKind::Punctuation(Punct::Less)) {
-            self.expect_delimiter(
-                TokenKind::Punctuation(Punct::Less),
-                TokenKind::Punctuation(Punct::Greater),
-                |p| match p.parse_generic_params() {
-                    Ok(g) => g,
-                    Err(err) => {
-                        p.emit(err);
-                        vec![]
-                    }
-                },
-            )
-        } else {
-            vec![]
-        };
+        let generics = self.parse_generic_params()?;
+        dbg!(&generics);
 
-        let params = self.expect_delimiter(
-            TokenKind::OpeningDelimiter(Delimiter::Paren),
-            TokenKind::ClosingDelimiter(Delimiter::Paren),
-            |p| match p.parse_params() {
-                Ok(v) => v,
-                Err(err) => {
-                    p.emit(err);
-                    vec![]
-                }
-            },
-        );
+        let params = self.parse_params()?;
 
         Ok(AstNode::new(
             FnSig {
@@ -285,64 +293,85 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_params(&mut self) -> PResult<Vec<AstNode<Param>>> {
-        let mut params = vec![];
+        Ok(self.parse_seperated_delimited(
+            TokenKind::OpeningDelimiter(Delimiter::Paren),
+            TokenKind::ClosingDelimiter(Delimiter::Paren),
+            TokenKind::Punctuation(Punct::Comma),
+            |p| p.parse_param(),
+        ))
+    }
 
-        loop {
-            let ident = self.parse_ident()?;
-        }
+    fn parse_param(&mut self) -> PResult<AstNode<Param>> {
+        todo!()
+    }
 
-        return Ok(params);
+    fn parse_pattern(&mut self) -> PResult<AstNode<Pattern>> {
+        let lo = self.current().span;
+
+        let pattern = match &self.current().kind {
+            TokenKind::Punctuation(Punct::Underscore) => {
+                self.advance();
+                Pattern::Wildcard
+            }
+            TokenKind::Ident(_) => {
+                let ident = self.parse_ident()?;
+                Pattern::Ident(ident)
+            }
+            // TokenKind::OpeningDelimiter(Delimiter::Paren) => self.parse_delimited(
+            //     TokenKind::OpeningDelimiter(Delimiter::Paren),
+            //     TokenKind::ClosingDelimiter(Delimiter::Paren),
+            //     |p| match p.parse_pattern() {
+            //         Ok(pat) => pat,
+            //         Err(err) => self.emit(err),
+            //     },
+            // ),
+            _ => panic!("Expected Pattern"),
+        };
+
+        Ok(AstNode::new(pattern, lo.to(self.previous().span)))
     }
 
     fn parse_generic_params(&mut self) -> PResult<Vec<AstNode<GenericParam>>> {
-        let mut generics = vec![];
-
-        if !self.consume(&[TokenKind::Punctuation(Punct::Less)]) {
-            return Ok(generics);
+        if self.current_is(&TokenKind::Punctuation(Punct::Less)) {
+            Ok(self.parse_seperated_delimited(
+                TokenKind::Punctuation(Punct::Less),
+                TokenKind::Punctuation(Punct::Greater),
+                TokenKind::Punctuation(Punct::Comma),
+                |p| p.parse_generic_param(),
+            ))
+        } else {
+            Ok(vec![])
         }
+    }
 
-        if self.consume(&[TokenKind::Punctuation(Punct::Greater)]) {
-            return Ok(generics);
-        }
+    fn parse_generic_param(&mut self) -> PResult<AstNode<GenericParam>> {
+        let lo = self.current().span;
 
-        loop {
-            let lo = self.current().span;
+        let is_const = self.consume(&[TokenKind::Keyword(Keyword::Const)]);
+        let ident = self.parse_ident()?;
 
-            let is_const = self.consume(&[TokenKind::Keyword(Keyword::Const)]);
-            let ident = self.parse_ident()?;
+        let bounds = if !is_const && self.consume(&[TokenKind::Punctuation(Punct::Colon)]) {
+            self.parse_bounds()?
+        } else {
+            vec![]
+        };
 
-            let bounds = if !is_const && self.consume(&[TokenKind::Punctuation(Punct::Colon)]) {
-                self.parse_bounds()?
-            } else {
-                vec![]
-            };
+        let kind = if is_const {
+            self.consume(&[TokenKind::Punctuation(Punct::Colon)]);
+            let const_ty = self.parse_type()?;
+            GenericParamKind::Const(const_ty)
+        } else {
+            GenericParamKind::Type
+        };
 
-            let kind = if is_const {
-                self.consume(&[TokenKind::Punctuation(Punct::Colon)]);
-                let const_ty = self.parse_type()?;
-                GenericParamKind::Const(const_ty)
-            } else {
-                GenericParamKind::Type
-            };
-
-            generics.push(AstNode::new(
-                GenericParam {
-                    ident,
-                    bounds,
-                    kind,
-                },
-                lo.to(self.previous().span),
-            ));
-
-            if self.consume(&[TokenKind::Punctuation(Punct::Greater)]) {
-                break;
-            }
-
-            if !self.consume(&[TokenKind::Punctuation(Punct::Comma)]) {
-                panic!()
-            }
-        }
-        Ok(generics)
+        Ok(AstNode::new(
+            GenericParam {
+                ident,
+                bounds,
+                kind,
+            },
+            lo.to(self.previous().span),
+        ))
     }
 
     fn parse_bounds(&mut self) -> PResult<Vec<AstNode<Path>>> {

@@ -55,6 +55,7 @@ pub enum Punct {
     Question,   // '?'
     Colon,      // ':'
     ColonColon, // '::'
+    Underscore, // '_'
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -158,6 +159,7 @@ impl Display for Punct {
             Punct::Question => "?",
             Punct::Colon => ":",
             Punct::ColonColon => "::",
+            Punct::Underscore => "_",
         };
         write!(f, "{}", s)
     }
