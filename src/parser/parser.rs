@@ -277,19 +277,29 @@ impl<'a> Parser<'a> {
         let ident = self.parse_ident()?;
 
         let generics = self.parse_generic_params()?;
-        dbg!(&generics);
 
         let params = self.parse_params()?;
+
+        let return_ty = self.parse_return_type()?;
 
         Ok(AstNode::new(
             FnSig {
                 ident,
                 generics,
-                params: params,
-                return_ty: todo!(),
+                params,
+                return_ty,
             },
             lo.to(self.previous().span),
         ))
+    }
+
+    fn parse_return_type(&mut self) -> PResult<Option<AstNode<Ty>>> {
+        if self.consume(&[TokenKind::Punctuation(Punct::Arrow)]) {
+            let ty = self.parse_type()?;
+            Ok(Some(ty))
+        } else {
+            Ok(None)
+        }
     }
 
     fn parse_params(&mut self) -> PResult<Vec<AstNode<Param>>> {
@@ -302,7 +312,21 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_param(&mut self) -> PResult<AstNode<Param>> {
-        todo!()
+        let lo = self.current().span;
+
+        let pattern = self.parse_pattern()?;
+
+        if !self.consume(&[TokenKind::Punctuation(Punct::Colon)]) {
+            panic!("make error for missing colon");
+        }
+        let ty = self.parse_type()?;
+        Ok(AstNode::new(
+            Param {
+                pattern,
+                type_annotation: ty,
+            },
+            lo.to(self.previous().span),
+        ))
     }
 
     fn parse_pattern(&mut self) -> PResult<AstNode<Pattern>> {
@@ -317,14 +341,19 @@ impl<'a> Parser<'a> {
                 let ident = self.parse_ident()?;
                 Pattern::Ident(ident)
             }
-            // TokenKind::OpeningDelimiter(Delimiter::Paren) => self.parse_delimited(
-            //     TokenKind::OpeningDelimiter(Delimiter::Paren),
-            //     TokenKind::ClosingDelimiter(Delimiter::Paren),
-            //     |p| match p.parse_pattern() {
-            //         Ok(pat) => pat,
-            //         Err(err) => self.emit(err),
-            //     },
-            // ),
+            TokenKind::OpeningDelimiter(Delimiter::Paren) => {
+                let elements = self.parse_seperated_delimited(
+                    TokenKind::OpeningDelimiter(Delimiter::Paren),
+                    TokenKind::ClosingDelimiter(Delimiter::Paren),
+                    TokenKind::Punctuation(Punct::Comma),
+                    |p| p.parse_pattern(),
+                );
+                if elements.len() == 1 {
+                    Pattern::Paren(Box::new(elements[0].clone()))
+                } else {
+                    Pattern::Tuple(elements)
+                }
+            }
             _ => panic!("Expected Pattern"),
         };
 
@@ -405,7 +434,7 @@ impl<'a> Parser<'a> {
 
         Ok(AstNode::new(
             PathSegment { ident, args },
-            lo.to(self.current().span),
+            lo.to(self.previous().span),
         ))
     }
 
@@ -432,7 +461,7 @@ impl<'a> Parser<'a> {
                 let ty = self.parse_type()?;
                 GenericArg::Type(ty)
             };
-            args.push(AstNode::new(generic_arg, lo.to(self.current().span)));
+            args.push(AstNode::new(generic_arg, lo.to(self.previous().span)));
 
             if self.consume(&[TokenKind::Punctuation(Punct::Greater)]) {
                 break;

@@ -56,6 +56,7 @@ pub enum Punct {
     Colon,      // ':'
     ColonColon, // '::'
     Underscore, // '_'
+    Pipe,       // '|'
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -160,6 +161,7 @@ impl Display for Punct {
             Punct::Colon => ":",
             Punct::ColonColon => "::",
             Punct::Underscore => "_",
+            Punct::Pipe => "|",
         };
         write!(f, "{}", s)
     }

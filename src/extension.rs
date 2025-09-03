@@ -9,7 +9,7 @@ impl SourceSpanExt for SourceSpan {
     fn to(&self, other: SourceSpan) -> SourceSpan {
         let start = self.offset();
         let end = other.offset() + other.len();
-        SourceSpan::from((start, end))
+        SourceSpan::from((start, end - start))
     }
 
     fn err_span() -> SourceSpan {
