@@ -157,13 +157,13 @@ impl<'sess> Lexer<'sess> {
                 }
             };
 
-            let token = Token::new(kind, SourceSpan::from((start, self.position - start)));
+            let token = Token::new(kind, SourceSpan::new(start.into(), self.position - start));
             tokens.push(token);
         }
 
         tokens.push(Token::new(
             TokenKind::EOF,
-            SourceSpan::from((self.position - 1, 1)),
+            SourceSpan::from((self.position - 2, 1)),
         ));
         tokens
     }

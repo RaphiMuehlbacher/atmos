@@ -80,7 +80,7 @@ pub enum Ty {
     Path(AstNode<Path>),
     Array(Box<AstNode<Ty>>, Box<AstNode<Expr>>),
     Ptr(Box<AstNode<Ty>>),
-    Fn(Box<AstNode<FnSig>>),
+    Fn(Vec<AstNode<Ty>>, Box<Option<AstNode<Ty>>>),
     Tuple(Vec<AstNode<Ty>>),
 }
 

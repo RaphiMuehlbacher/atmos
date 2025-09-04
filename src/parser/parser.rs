@@ -6,7 +6,7 @@ use crate::lexer::{Token, TokenKind};
 use crate::parser::ParserError;
 use crate::parser::ast::{
     AstNode, Crate, Expr, FnDecl, FnSig, GenericArg, GenericParam, GenericParamKind, Ident, Item,
-    Param, Path, PathSegment, Pattern, Ty,
+    Param, Path, PathSegment, Pattern, Stmt, Ty,
 };
 
 type PResult<T> = Result<T, ParserError>;
@@ -20,10 +20,6 @@ pub struct Parser<'a> {
 impl<'a> Parser<'a> {
     fn current(&self) -> &Token {
         &self.tokens[self.position]
-    }
-
-    fn next(&self) -> &Token {
-        &self.tokens[self.position + 1]
     }
 
     fn previous(&self) -> &Token {
@@ -121,7 +117,6 @@ impl<'a> Parser<'a> {
             if self.current_is(&seperator) {
                 self.advance();
             } else if !self.current_is(&close) {
-                todo!("Missing seperator");
                 self.recover_to_seperator_or_closing(&close, &seperator);
             }
         }
@@ -131,7 +126,11 @@ impl<'a> Parser<'a> {
         } else if !delimiter_err_emitted {
             match &self.current().kind {
                 TokenKind::EOF => {
-                    panic!("create error for unclosed delimiter");
+                    self.emit(ParserError::UnclosedDelimiter {
+                        src: self.session.get_named_source(),
+                        span: self.current().span,
+                        delimiter: close,
+                    });
                 }
                 other_delimiter if matches!(other_delimiter, TokenKind::ClosingDelimiter(_)) => {
                     self.emit(ParserError::MismatchedDelimiter {
@@ -175,45 +174,44 @@ impl<'a> Parser<'a> {
     fn emit(&mut self, error: ParserError) {
         self.session.push_error(CompilerError::ParserError(error))
     }
-}
-//
-// fn recover_item(&mut self) -> AstNode<Item> {
-//     while !self.at_eof() && !self.token_begins_item() {
-//         self.advance();
-//     }
-//     AstNode::err(Item::Err)
-// }
-//
-// fn recover_stmt(&mut self) -> AstNode<Stmt> {
-//     while !self.at_eof() && !self.token_ends_stmt() {
-//         self.advance();
-//     }
-//     AstNode::err(Stmt::Err)
-// }
-//
-// fn token_ends_stmt(&self) -> bool {
-//     matches!(
-//         self.current().kind,
-//         TokenKind::Punctuation(Punct::Semicolon)
-//             | TokenKind::ClosingDelimiter(Delimiter::Brace)
-//     )
-// }
-//
-// fn token_begins_item(&self) -> bool {
-//     matches!(
-//         self.current().kind,
-//         TokenKind::Keyword(Keyword::Fn)
-//             | TokenKind::Keyword(Keyword::Struct)
-//             | TokenKind::Keyword(Keyword::Enum)
-//             | TokenKind::Keyword(Keyword::Impl)
-//             | TokenKind::Keyword(Keyword::Trait)
-//             | TokenKind::Keyword(Keyword::Extern)
-//             | TokenKind::Keyword(Keyword::Const)
-//             | TokenKind::Keyword(Keyword::Use)
-//             | TokenKind::Keyword(Keyword::Type)
-//     )
-// }
 
+    fn recover_item(&mut self) -> AstNode<Item> {
+        while !self.at_eof() && !self.token_begins_item() {
+            self.advance();
+        }
+        AstNode::err(Item::Err)
+    }
+
+    fn recover_stmt(&mut self) -> AstNode<Stmt> {
+        while !self.at_eof() && !self.token_ends_stmt() {
+            self.advance();
+        }
+        AstNode::err(Stmt::Err)
+    }
+
+    fn token_ends_stmt(&self) -> bool {
+        matches!(
+            self.current().kind,
+            TokenKind::Punctuation(Punct::Semicolon)
+                | TokenKind::ClosingDelimiter(Delimiter::Brace)
+        )
+    }
+
+    fn token_begins_item(&self) -> bool {
+        matches!(
+            self.current().kind,
+            TokenKind::Keyword(Keyword::Fn)
+                | TokenKind::Keyword(Keyword::Struct)
+                | TokenKind::Keyword(Keyword::Enum)
+                | TokenKind::Keyword(Keyword::Impl)
+                | TokenKind::Keyword(Keyword::Trait)
+                | TokenKind::Keyword(Keyword::Extern)
+                | TokenKind::Keyword(Keyword::Const)
+                | TokenKind::Keyword(Keyword::Use)
+                | TokenKind::Keyword(Keyword::Type)
+        )
+    }
+}
 impl<'a> Parser<'a> {
     pub fn new(session: &'a Session, tokens: Vec<Token>) -> Self {
         Self {
@@ -228,7 +226,13 @@ impl<'a> Parser<'a> {
         let mut items = vec![];
 
         while !self.at_eof() {
-            items.push(self.parse_item());
+            match self.parse_item() {
+                Ok(item) => items.push(item),
+                Err(err) => {
+                    self.emit(err);
+                    self.recover_item();
+                }
+            }
         }
 
         Crate {
@@ -237,18 +241,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_item(&mut self) -> AstNode<Item> {
-        match self.parse_item_without_recovery() {
-            Ok(item) => item,
-            Err(err) => {
-                self.emit(err);
-                // self.recover_item()
-                todo!()
-            }
-        }
-    }
-
-    fn parse_item_without_recovery(&mut self) -> PResult<AstNode<Item>> {
+    fn parse_item(&mut self) -> PResult<AstNode<Item>> {
         if self.check(&[TokenKind::Keyword(Keyword::Fn)]) {
             self.parse_fn_item()
         } else {
@@ -275,11 +268,8 @@ impl<'a> Parser<'a> {
         let lo = self.current().span;
 
         let ident = self.parse_ident()?;
-
         let generics = self.parse_generic_params()?;
-
         let params = self.parse_params()?;
-
         let return_ty = self.parse_return_type()?;
 
         Ok(AstNode::new(
@@ -293,6 +283,7 @@ impl<'a> Parser<'a> {
         ))
     }
 
+    /// starts at '->', ends after the type
     fn parse_return_type(&mut self) -> PResult<Option<AstNode<Ty>>> {
         if self.consume(&[TokenKind::Punctuation(Punct::Arrow)]) {
             let ty = self.parse_type()?;
@@ -302,6 +293,7 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// starts at '(', ends after ')'
     fn parse_params(&mut self) -> PResult<Vec<AstNode<Param>>> {
         Ok(self.parse_seperated_delimited(
             TokenKind::OpeningDelimiter(Delimiter::Paren),
@@ -311,13 +303,21 @@ impl<'a> Parser<'a> {
         ))
     }
 
+    /// starts at the identifier and ends after the type
     fn parse_param(&mut self) -> PResult<AstNode<Param>> {
         let lo = self.current().span;
 
         let pattern = self.parse_pattern()?;
-
         if !self.consume(&[TokenKind::Punctuation(Punct::Colon)]) {
-            panic!("make error for missing colon");
+            self.emit(ParserError::UnexpectedToken {
+                src: self.session.get_named_source(),
+                span: self.current().span,
+                found: self.current().kind.clone(),
+                expected: TokenKind::Punctuation(Punct::Colon),
+            });
+            if !matches!(self.current().kind, TokenKind::Ident(_)) {
+                self.advance();
+            }
         }
         let ty = self.parse_type()?;
         Ok(AstNode::new(
@@ -361,16 +361,16 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_generic_params(&mut self) -> PResult<Vec<AstNode<GenericParam>>> {
-        if self.current_is(&TokenKind::Punctuation(Punct::Less)) {
-            Ok(self.parse_seperated_delimited(
-                TokenKind::Punctuation(Punct::Less),
-                TokenKind::Punctuation(Punct::Greater),
-                TokenKind::Punctuation(Punct::Comma),
-                |p| p.parse_generic_param(),
-            ))
-        } else {
-            Ok(vec![])
+        if !self.current_is(&TokenKind::Punctuation(Punct::Less)) {
+            return Ok(vec![]);
         }
+
+        Ok(self.parse_seperated_delimited(
+            TokenKind::Punctuation(Punct::Less),
+            TokenKind::Punctuation(Punct::Greater),
+            TokenKind::Punctuation(Punct::Comma),
+            |p| p.parse_generic_param(),
+        ))
     }
 
     fn parse_generic_param(&mut self) -> PResult<AstNode<GenericParam>> {
@@ -437,63 +437,72 @@ impl<'a> Parser<'a> {
             lo.to(self.previous().span),
         ))
     }
-
     fn parse_generic_args(&mut self) -> PResult<Vec<AstNode<GenericArg>>> {
-        let mut args = vec![];
-        if !self.consume(&[TokenKind::Punctuation(Punct::Less)]) {
-            return Ok(args);
-        }
-        if self.consume(&[TokenKind::Punctuation(Punct::Greater)]) {
-            panic!()
+        if !self.check(&[TokenKind::Punctuation(Punct::Less)]) {
+            return Ok(vec![]);
         }
 
-        loop {
-            if self.consume(&[TokenKind::Punctuation(Punct::Greater)]) {
-                break;
-            }
+        Ok(self.parse_seperated_delimited(
+            TokenKind::Punctuation(Punct::Less),
+            TokenKind::Punctuation(Punct::Greater),
+            TokenKind::Punctuation(Punct::Comma),
+            |p| p.parse_generic_arg(),
+        ))
+    }
 
-            let lo = self.current().span;
+    fn parse_generic_arg(&mut self) -> PResult<AstNode<GenericArg>> {
+        let lo = self.current().span;
 
-            let generic_arg = if self.consume(&[TokenKind::Keyword(Keyword::Const)]) {
-                let expr = self.parse_expression()?;
-                GenericArg::Const(Box::new(expr))
-            } else {
-                let ty = self.parse_type()?;
-                GenericArg::Type(ty)
-            };
-            args.push(AstNode::new(generic_arg, lo.to(self.previous().span)));
-
-            if self.consume(&[TokenKind::Punctuation(Punct::Greater)]) {
-                break;
-            }
-
-            if !self.consume(&[TokenKind::Punctuation(Punct::Comma)]) {
-                panic!()
-            }
-        }
-
-        Ok(args)
+        let generic_arg = if self.consume(&[TokenKind::Keyword(Keyword::Const)]) {
+            let expr = self.parse_expression()?;
+            GenericArg::Const(Box::new(expr))
+        } else {
+            let ty = self.parse_type()?;
+            GenericArg::Type(ty)
+        };
+        Ok(AstNode::new(generic_arg, lo.to(self.previous().span)))
     }
 
     fn parse_type(&mut self) -> PResult<AstNode<Ty>> {
         let lo = self.current().span;
+
         let ty = match &self.current().kind {
             TokenKind::Keyword(Keyword::Fn) => {
-                let sig = self.parse_fn_sig()?;
-                Ty::Fn(Box::new(sig))
+                self.advance();
+                let param_types = self.parse_seperated_delimited(
+                    TokenKind::OpeningDelimiter(Delimiter::Paren),
+                    TokenKind::ClosingDelimiter(Delimiter::Paren),
+                    TokenKind::Punctuation(Punct::Comma),
+                    |p| p.parse_type(),
+                );
+
+                let return_ty = self.parse_return_type()?;
+
+                Ty::Fn(param_types, Box::new(return_ty))
             }
             TokenKind::OpeningDelimiter(Delimiter::Bracket) => {
                 self.advance();
-                let inner = self.parse_type()?;
+                let inner_ty = self.parse_type()?;
+
                 if !self.consume(&[TokenKind::Punctuation(Punct::Semicolon)]) {
-                    panic!()
+                    self.emit(ParserError::UnexpectedToken {
+                        src: self.session.get_named_source(),
+                        span: self.current().span,
+                        found: self.current().kind.clone(),
+                        expected: TokenKind::Punctuation(Punct::Semicolon),
+                    });
                 }
                 let len = self.parse_expression()?;
 
                 if !self.consume(&[TokenKind::ClosingDelimiter(Delimiter::Bracket)]) {
-                    panic!()
+                    self.emit(ParserError::UnexpectedToken {
+                        src: self.session.get_named_source(),
+                        span: self.current().span,
+                        found: self.current().kind.clone(),
+                        expected: TokenKind::ClosingDelimiter(Delimiter::Bracket),
+                    });
                 }
-                Ty::Array(Box::new(inner), Box::new(len))
+                Ty::Array(Box::new(inner_ty), Box::new(len))
             }
             TokenKind::Punctuation(Punct::Star) => {
                 self.advance();
@@ -501,24 +510,14 @@ impl<'a> Parser<'a> {
                 Ty::Ptr(Box::new(ty))
             }
             TokenKind::OpeningDelimiter(Delimiter::Paren) => {
-                self.advance();
-                if self.consume(&[TokenKind::ClosingDelimiter(Delimiter::Paren)]) {
-                    Ty::Tuple(vec![])
-                } else {
-                    let mut elems = vec![];
-                    elems.push(self.parse_type()?);
-                    while self.consume(&[TokenKind::Punctuation(Punct::Comma)]) {
-                        if self.consume(&[TokenKind::ClosingDelimiter(Delimiter::Paren)]) {
-                            return Ok(AstNode::new(Ty::Tuple(elems), lo.to(self.previous().span)));
-                        }
-                        elems.push(self.parse_type()?);
-                    }
+                let elements = self.parse_seperated_delimited(
+                    TokenKind::OpeningDelimiter(Delimiter::Paren),
+                    TokenKind::ClosingDelimiter(Delimiter::Paren),
+                    TokenKind::Punctuation(Punct::Comma),
+                    |p| p.parse_type(),
+                );
 
-                    if !self.consume(&[TokenKind::ClosingDelimiter(Delimiter::Paren)]) {
-                        panic!()
-                    }
-                    Ty::Tuple(elems)
-                }
+                Ty::Tuple(elements)
             }
 
             _ => Ty::Path(self.parse_path()?),

@@ -16,15 +16,6 @@ pub enum ParserError {
         found: TokenKind,
     },
 
-    #[error("Missing paramaters for function definition")]
-    #[diagnostic(code(parser::missing_function_params), help("Add a parameter list"))]
-    MissingFnParams {
-        #[source_code]
-        src: NamedSource<String>,
-
-        #[label("add it here")]
-        span: SourceSpan,
-    },
     #[error("Expected {expected}, found `{found}`")]
     #[diagnostic(code(parser::unexpected_token))]
     UnexpectedToken {
@@ -49,7 +40,7 @@ pub enum ParserError {
 
         found_delimiter: TokenKind,
     },
-    #[error("expected '{expected:?}' but found '{found:?}'")]
+    #[error("Expected '{expected:?}' but found '{found:?}'")]
     #[diagnostic(code(parser::mismatched_delimiter))]
     MismatchedDelimiter {
         #[source_code]
@@ -63,5 +54,16 @@ pub enum ParserError {
 
         found: TokenKind,
         expected: TokenKind,
+    },
+    #[error("Unclosed delimiter")]
+    #[diagnostic(code(parse::unclosed_delimiter), help("missing closing {delimiter:?}"))]
+    UnclosedDelimiter {
+        #[source_code]
+        src: NamedSource<String>,
+
+        #[label("unclosed delimiter here")]
+        span: SourceSpan,
+
+        delimiter: TokenKind,
     },
 }
