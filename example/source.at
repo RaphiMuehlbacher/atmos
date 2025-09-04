@@ -1,1 +1,3 @@
-fn identity() fn (i32){}
+fn identity() {
+    let a;
+}

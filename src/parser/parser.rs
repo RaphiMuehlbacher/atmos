@@ -5,8 +5,8 @@ use crate::lexer::token_kind::{Delimiter, Keyword, Literal, Punct};
 use crate::lexer::{Token, TokenKind};
 use crate::parser::ParserError;
 use crate::parser::ast::{
-    AstNode, Crate, Expr, FnDecl, FnSig, GenericArg, GenericParam, GenericParamKind, Ident, Item,
-    Param, Path, PathSegment, Pattern, Stmt, Ty,
+    AstNode, BlockExpr, Crate, Expr, FnDecl, FnSig, GenericArg, GenericParam, GenericParamKind,
+    Ident, Item, LetStmt, LiteralExpr, Param, Path, PathSegment, Pattern, Stmt, Ty,
 };
 
 type PResult<T> = Result<T, ParserError>;
@@ -256,9 +256,10 @@ impl<'a> Parser<'a> {
         self.advance();
 
         let sig = self.parse_fn_sig()?;
+        let body = self.parse_block()?;
 
         Ok(AstNode::new(
-            Item::Fn(FnDecl { sig, body: todo!() }),
+            Item::Fn(FnDecl { sig, body }),
             lo.to(self.previous().span),
         ))
     }
@@ -546,6 +547,86 @@ impl<'a> Parser<'a> {
                 Ok(AstNode::err(Ident::err()))
             }
         }
+    }
+
+    /// start at '{', end at '}'
+    fn parse_block(&mut self) -> PResult<AstNode<BlockExpr>> {
+        let lo = self.current().span;
+        self.advance();
+
+        let mut stmts = vec![];
+
+        while !self.consume(&[TokenKind::ClosingDelimiter(Delimiter::Bracket)]) {
+            if self.at_eof() {
+                break;
+            }
+            let stmt = self.parse_statement()?;
+            stmts.push(stmt);
+        }
+        Ok(AstNode::new(
+            BlockExpr { stmts },
+            lo.to(self.previous().span),
+        ))
+    }
+
+    fn parse_statement(&mut self) -> PResult<AstNode<Stmt>> {
+        let lo = self.current().span;
+
+        let stmt = match self.current().kind {
+            TokenKind::Keyword(Keyword::Let) => self.parse_let_stmt()?,
+
+            _ if self.token_begins_item() => {
+                let item = self.parse_item()?;
+                AstNode::new(Stmt::Item(item), lo.to(self.previous().span))
+            }
+            _ => {
+                let expr = self.parse_expression()?;
+                if self.consume(&[TokenKind::Punctuation(Punct::Semicolon)]) {
+                    AstNode::new(Stmt::Semi(expr), lo.to(self.previous().span))
+                } else {
+                    AstNode::new(Stmt::Expr(expr), lo.to(self.previous().span))
+                }
+            }
+        };
+
+        Ok(stmt)
+    }
+
+    fn parse_let_stmt(&mut self) -> PResult<AstNode<Stmt>> {
+        let lo = self.current().span;
+        self.advance();
+
+        let pat = self.parse_pattern()?;
+
+        let type_annotation = if self.current_is(&TokenKind::Punctuation(Punct::Colon)) {
+            Some(self.parse_type()?)
+        } else {
+            None
+        };
+
+        let expr = if self.consume(&[TokenKind::Punctuation(Punct::Eq)]) {
+            let expr = self.parse_expression()?;
+            Some(Box::new(expr))
+        } else {
+            None
+        };
+
+        if !self.consume(&[TokenKind::Punctuation(Punct::Semicolon)]) {
+            self.emit(ParserError::UnexpectedToken {
+                src: self.session.get_named_source(),
+                span: self.current().span,
+                found: self.current().kind.clone(),
+                expected: TokenKind::Punctuation(Punct::Semicolon),
+            });
+        }
+        Ok(AstNode::new(
+            Stmt::Let(LetStmt {
+                pat,
+                expr,
+                type_annotation,
+            }),
+            lo.to(self.previous().span),
+        ))
     }
 
     fn parse_expression(&mut self) -> PResult<AstNode<Expr>> {

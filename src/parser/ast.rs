@@ -116,10 +116,10 @@ pub struct Crate {
 
 #[derive(Debug, Clone)]
 pub enum Stmt {
-    Item(Item),
+    Item(AstNode<Item>),
     Let(LetStmt),
-    Expr(ExprStmt),
-    Semi(ExprStmt),
+    Expr(AstNode<Expr>),
+    Semi(AstNode<Expr>),
     Err,
 }
 
@@ -140,11 +140,6 @@ pub enum Item {
 #[derive(Debug, Clone)]
 pub struct UseItem {
     pub path: AstNode<Path>,
-}
-
-#[derive(Debug, Clone)]
-pub struct ExprStmt {
-    pub expr: AstNode<Expr>,
 }
 
 #[derive(Debug, Clone)]
@@ -258,7 +253,7 @@ pub struct TyAliasDecl {
 pub struct LetStmt {
     pub pat: AstNode<Pattern>,
     pub type_annotation: Option<AstNode<Ty>>,
-    pub initializer: Option<Box<AstNode<Expr>>>,
+    pub expr: Option<Box<AstNode<Expr>>>,
 }
 
 #[derive(Debug, Clone)]
@@ -398,7 +393,6 @@ pub struct BreakExpr {
 #[derive(Debug, Clone)]
 pub struct BlockExpr {
     pub stmts: Vec<AstNode<Stmt>>,
-    pub expr: Option<Box<AstNode<Expr>>>,
 }
 
 #[derive(Debug, Clone)]

@@ -20,5 +20,5 @@ fn main() {
     let ast = parser.parse_crate();
 
     session.emit_all();
-    println!("{ast:?}");
+    dbg!(&ast);
 }
