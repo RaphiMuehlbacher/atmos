@@ -208,54 +208,75 @@ impl<'sess> Lexer<'sess> {
     }
 
     fn lex_number(&mut self) -> TokenKind {
-        let mut value = String::from(
-            self.session
-                .get_source()
-                .chars()
-                .nth(self.position - 1)
-                .unwrap(),
-        );
+        let mut value = String::new();
         let mut has_dot = false;
 
+        value.push(
+            self.session.get_source()[self.position - 1..]
+                .chars()
+                .next()
+                .unwrap(),
+        );
+
         while let Some(c) = self.peek() {
-            if c.is_ascii_digit() {
-                value.push(c);
-                self.advance();
-            } else if c == '.' && !has_dot {
-                has_dot = true;
-                value.push(c);
-                self.advance();
-            } else {
-                break;
+            match c {
+                '_' => {
+                    self.advance();
+                }
+                '0'..='9' => {
+                    value.push(c);
+                    self.advance();
+                }
+                '.' if !has_dot => {
+                    if let Some(next) = self.peek_next() {
+                        if next.is_ascii_digit() {
+                            has_dot = true;
+                            value.push(c);
+                            self.advance();
+                        } else {
+                            break;
+                        }
+                    } else {
+                        break;
+                    }
+                }
+                _ => break,
             }
         }
 
-        if self.check_suffix("u32") {
-            TokenKind::Literal(Literal::U32(value.parse().unwrap()))
-        } else if has_dot {
-            TokenKind::Literal(Literal::F64(value.parse().unwrap()))
+        let suffix = if let Some(next) = self.peek() {
+            if self.is_ident_start(next) {
+                if let TokenKind::Ident(ident) = self.lex_identifier() {
+                    Some(ident)
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
         } else {
-            TokenKind::Literal(Literal::I32(value.parse().unwrap()))
-        }
-    }
+            None
+        };
 
-    fn check_suffix(&mut self, suffix: &str) -> bool {
-        let remaining = &self.session.get_source()[self.position..];
-        if remaining.starts_with(suffix) {
-            self.position += suffix.len();
-            true
+        if has_dot {
+            let parsed: f64 = value.parse().unwrap();
+            TokenKind::Literal(Literal::F64(parsed))
         } else {
-            false
+            match suffix.as_deref() {
+                Some("i32") => TokenKind::Literal(Literal::I32(value.parse().unwrap())),
+                Some("u32") => TokenKind::Literal(Literal::U32(value.parse().unwrap())),
+                Some("f64") => TokenKind::Literal(Literal::F64(value.parse().unwrap())),
+                _ => TokenKind::Literal(Literal::I32(value.parse().unwrap())),
+            }
         }
     }
 
     fn lex_identifier(&mut self) -> TokenKind {
         let mut value = String::new();
         value.push(
-            self.session
-                .get_source()
+            self.session.get_source()[self.position - 1..]
                 .chars()
-                .nth(self.position - 1)
+                .next()
                 .unwrap(),
         );
 
@@ -290,13 +311,13 @@ impl<'sess> Lexer<'sess> {
             "as" => TokenKind::Keyword(Keyword::As),
             "true" => TokenKind::Keyword(Keyword::True),
             "false" => TokenKind::Keyword(Keyword::False),
-            "null" => TokenKind::Keyword(Keyword::Null),
             "self" => TokenKind::Keyword(Keyword::SelfKw),
             "super" => TokenKind::Keyword(Keyword::Super),
             "use" => TokenKind::Keyword(Keyword::Use),
             "where" => TokenKind::Keyword(Keyword::Where),
             "extern" => TokenKind::Keyword(Keyword::Extern),
             "const" => TokenKind::Keyword(Keyword::Const),
+            "unit" => TokenKind::Keyword(Keyword::Unit),
             _ => TokenKind::Ident(value),
         }
     }
@@ -331,6 +352,12 @@ impl<'sess> Lexer<'sess> {
 
     fn peek(&self) -> Option<char> {
         self.session.get_source()[self.position..].chars().next()
+    }
+
+    fn peek_next(&self) -> Option<char> {
+        self.session.get_source()[self.position + 1..]
+            .chars()
+            .next()
     }
 
     fn advance(&mut self) -> Option<char> {

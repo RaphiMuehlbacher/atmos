@@ -1,13 +1,14 @@
 use crate::Session;
+use crate::Session;
+use crate::Session;
 use crate::error::CompilerError;
 use crate::extension::SourceSpanExt;
+use crate::parser::ParserError;
 use crate::lexer::token_kind::{Delimiter, Keyword, Literal, Punct};
+use crate::parser::ParserError;
 use crate::lexer::{Token, TokenKind};
 use crate::parser::ParserError;
-use crate::parser::ast::{
-    AstNode, BlockExpr, Crate, Expr, FnDecl, FnSig, GenericArg, GenericParam, GenericParamKind,
-    Ident, Item, LetStmt, LiteralExpr, Param, Path, PathSegment, Pattern, Stmt, Ty,
-};
+us
 
 type PResult<T> = Result<T, ParserError>;
 
@@ -556,10 +557,11 @@ impl<'a> Parser<'a> {
 
         let mut stmts = vec![];
 
-        while !self.consume(&[TokenKind::ClosingDelimiter(Delimiter::Bracket)]) {
+        while !self.consume(&[TokenKind::ClosingDelimiter(Delimiter::Brace)]) {
             if self.at_eof() {
                 break;
             }
+
             let stmt = self.parse_statement()?;
             stmts.push(stmt);
         }
@@ -630,6 +632,170 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_expression(&mut self) -> PResult<AstNode<Expr>> {
+        self.parse_expr_with_precedence(0)
+    }
+
+    fn parse_expr_with_precedence(&mut self, min_prec: u8) -> PResult<AstNode<Expr>> {
+        let mut lhs = self.parse_prefix()?;
+
+        loop {
+            match self.current().kind {
+                TokenKind::OpeningDelimiter(Delimiter::Paren) => {
+                    let args = self.parse_seperated_delimited(
+                        TokenKind::OpeningDelimiter(Delimiter::Paren),
+                        TokenKind::ClosingDelimiter(Delimiter::Paren),
+                        TokenKind::Punctuation(Punct::Comma),
+                        |p| p.parse_expression(),
+                    );
+
+                    lhs = AstNode::new(
+                        Expr::Call(CallExpr {
+                            arguments: args,
+                            callee: Box::new(lhs.clone()),
+                        }),
+                        lhs.span.to(self.previous().span),
+                    )
+                }
+                TokenKind::Punctuation(Punct::Dot) => {
+                    self.advance();
+
+                    let field = self.parse_ident()?;
+                    lhs = AstNode::new(
+                        Expr::FieldAccess(FieldAccessExpr {
+                            target: Box::new(lhs.clone()),
+                            field,
+                        }),
+                        lhs.span.to(self.previous().span),
+                    )
+                }
+                TokenKind::OpeningDelimiter(Delimiter::Bracket) => {
+                    self.advance();
+                    let expr = self.parse_expression()?;
+
+                    if !self.consume(&[TokenKind::ClosingDelimiter(Delimiter::Bracket)]) {
+                        self.emit(ParserError::UnexpectedToken {
+                            src: self.session.get_named_source(),
+                            span: self.current().span,
+                            found: self.current().kind.clone(),
+                            expected: TokenKind::ClosingDelimiter(Delimiter::Bracket),
+                        });
+                    }
+
+                    lhs = AstNode::new(
+                        Expr::Index(IndexExpr {
+                            target: Box::new(lhs.clone()),
+                            index: Box::new(expr),
+                        }),
+                        lhs.span.to(self.previous().span),
+                    )
+                }
+                _ => break,
+            }
+        }
+
+        Ok(lhs)
+    }
+
+    fn parse_prefix(&mut self) -> PResult<AstNode<Expr>> {
+        let lo = self.current().span;
+
+        let op = match self.current().kind {
+            TokenKind::Punctuation(Punct::Bang) => UnOp::Not,
+            TokenKind::Punctuation(Punct::Minus) => UnOp::Neg,
+            TokenKind::Punctuation(Punct::Star) => UnOp::Deref,
+            TokenKind::Punctuation(Punct::Ampersand) => UnOp::AddrOf,
+            _ => {
+                return self.parse_atom();
+            }
+        };
+
+        let op = AstNode::new(op, self.current().span);
+        self.advance();
+
+        let operand = self.parse_prefix()?;
+
+        Ok(AstNode::new(
+            Expr::Unary(UnaryExpr {
+                operator: op,
+                operand: Box::new(operand),
+            }),
+            lo.to(self.previous().span),
+        ))
+    }
+
+    fn parse_atom(&mut self) -> PResult<AstNode<Expr>> {
+        let lo = self.current().span;
+
+        let atom = match &self.current().kind {
+            TokenKind::Keyword(Keyword::True) => Expr::Literal(LiteralExpr::Bool(true)),
+            TokenKind::Keyword(Keyword::False) => Expr::Literal(LiteralExpr::Bool(false)),
+            TokenKind::Keyword(Keyword::Unit) => Expr::Literal(LiteralExpr::Unit),
+            TokenKind::Literal(lit) => match lit {
+                Literal::I32(i32) => Expr::Literal(LiteralExpr::I32(*i32)),
+                Literal::U32(u32) => Expr::Literal(LiteralExpr::U32(*u32)),
+                Literal::F64(f64) => Expr::Literal(LiteralExpr::F64(*f64)),
+                Literal::Str(str) => Expr::Literal(LiteralExpr::Str(str.clone())),
+            },
+            TokenKind::Ident(_) => {
+                let path = self.parse_path()?;
+                Expr::Path(PathExpr { path })
+            }
+            TokenKind::OpeningDelimiter(Delimiter::Bracket) => {
+                let elems = self.parse_seperated_delimited(
+                    TokenKind::OpeningDelimiter(Delimiter::Bracket),
+                    TokenKind::ClosingDelimiter(Delimiter::Bracket),
+                    TokenKind::Punctuation(Punct::Comma),
+                    |p| p.parse_expression(),
+                );
+                Expr::Array(ArrayExpr { expressions: elems })
+            }
+            TokenKind::OpeningDelimiter(Delimiter::Brace) => {
+                let block = self.parse_block()?;
+                Expr::Block(block.node)
+            }
+            TokenKind::Keyword(Keyword::If) => {
+                let if_expr = self.parse_if_expr()?;
+                Expr::If(if_expr.node)
+            }
+
+            TokenKind::Keyword(Keyword::While) => {
+                let while_expr = self.parse_while_expr()?;
+                Expr::While(while_expr.node)
+            }
+
+            _ => {
+                panic!()
+            }
+        };
+        self.advance();
+
+        Ok(AstNode::new(atom, lo.to(self.previous().span)))
+    }
+
+    fn parse_if_expr(&mut self) -> PResult<AstNode<IfExpr>> {
+        let lo = self.current().span;
+
+        self.advance();
+        let condition = self.parse_expression()?;
+        let then_branch = self.parse_block()?;
+
+        let else_branch = if self.consume(&[TokenKind::Keyword(Keyword::Else)]) {
+            Some(Box::new(self.parse_block()?))
+        } else {
+            None
+        };
+
+        Ok(AstNode::new(
+            IfExpr {
+                condition: Box::new(condition),
+                then_branch: Box::new(then_branch),
+                else_branch,
+            },
+            lo.to(self.previous().span),
+        ))
+    }
+
+    fn parse_while_expr(&mut self) -> PResult<AstNode<WhileExpr>> {
         todo!()
     }
 }

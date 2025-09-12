@@ -422,7 +422,7 @@ pub struct UnaryExpr {
 pub struct IfExpr {
     pub condition: Box<AstNode<Expr>>,
     pub then_branch: Box<AstNode<BlockExpr>>,
-    pub else_branch: Option<Box<AstNode<Expr>>>,
+    pub else_branch: Option<Box<AstNode<BlockExpr>>>,
 }
 
 #[derive(Debug, Clone)]
@@ -466,6 +466,7 @@ pub enum UnOp {
     Deref,
     Not,
     Neg,
+    AddrOf,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

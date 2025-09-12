@@ -82,13 +82,13 @@ pub enum Keyword {
     As,       // 'as'
     True,     // 'true'
     False,    // 'false'
-    Null,     // 'null'
     SelfKw,   // 'self'
     Super,    // 'super'
     Use,      // 'use'
     Where,    // 'where'
     Extern,   // 'extern'
     Const,    // 'const'
+    Unit,     // 'unit'
 }
 
 impl Display for TokenKind {
@@ -191,13 +191,13 @@ impl Display for Keyword {
             Keyword::As => "as",
             Keyword::True => "true",
             Keyword::False => "false",
-            Keyword::Null => "null",
             Keyword::SelfKw => "self",
             Keyword::Super => "super",
             Keyword::Use => "use",
             Keyword::Where => "where",
             Keyword::Extern => "extern",
             Keyword::Const => "const",
+            Keyword::Unit => "unit",
         };
         write!(f, "{}", s)
     }
