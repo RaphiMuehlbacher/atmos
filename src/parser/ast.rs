@@ -82,6 +82,7 @@ pub enum Ty {
     Ptr(Box<AstNode<Ty>>),
     Fn(Vec<AstNode<Ty>>, Box<Option<AstNode<Ty>>>),
     Tuple(Vec<AstNode<Ty>>),
+    Paren(Box<AstNode<Ty>>),
 }
 
 #[derive(Debug, Clone)]
@@ -284,6 +285,7 @@ pub enum Expr {
     Match(MatchExpr),
     Let(LetExpr),
     Err,
+    Paren(Box<AstNode<Expr>>),
 }
 
 #[derive(Debug, Clone)]

@@ -1,14 +1,15 @@
-use crate::Session;
-use crate::Session;
-use crate::Session;
 use crate::error::CompilerError;
 use crate::extension::SourceSpanExt;
-use crate::parser::ParserError;
 use crate::lexer::token_kind::{Delimiter, Keyword, Literal, Punct};
-use crate::parser::ParserError;
 use crate::lexer::{Token, TokenKind};
+use crate::parser::ast::{
+    ArrayExpr, AstNode, BlockExpr, CallExpr, Crate, Expr, FieldAccessExpr, FnDecl, FnSig,
+    GenericArg, GenericParam, GenericParamKind, Ident, IfExpr, IndexExpr, Item, LetStmt,
+    LiteralExpr, Param, Path, PathExpr, PathSegment, Pattern, Stmt, TupleExpr, Ty, UnOp, UnaryExpr,
+    WhileExpr,
+};
 use crate::parser::ParserError;
-us
+use crate::Session;
 
 type PResult<T> = Result<T, ParserError>;
 
@@ -71,13 +72,27 @@ impl<'a> Parser<'a> {
 }
 
 impl<'a> Parser<'a> {
-    fn parse_seperated_delimited<T, F>(
+    fn parse_separated_delimited<T, F>(
         &mut self,
         open: TokenKind,
         close: TokenKind,
-        seperator: TokenKind,
-        mut parse_element: F,
+        separator: TokenKind,
+        parse_element: F,
     ) -> Vec<T>
+    where
+        F: FnMut(&mut Self) -> PResult<T>,
+    {
+        self.parse_separated_delimited_with_trailing(open, close, separator, parse_element)
+            .0
+    }
+
+    fn parse_separated_delimited_with_trailing<T, F>(
+        &mut self,
+        open: TokenKind,
+        close: TokenKind,
+        separator: TokenKind,
+        mut parse_element: F,
+    ) -> (Vec<T>, bool)
     where
         F: FnMut(&mut Self) -> PResult<T>,
     {
@@ -102,6 +117,7 @@ impl<'a> Parser<'a> {
         }
 
         let mut elements = vec![];
+        let mut trailing_comma = false;
         loop {
             if self.current_is(&close) || self.at_eof() {
                 break;
@@ -111,14 +127,21 @@ impl<'a> Parser<'a> {
                 Ok(element) => elements.push(element),
                 Err(err) => {
                     self.emit(err);
-                    self.recover_to_seperator_or_closing(&close, &seperator);
+                    self.recover_to_separator_or_closing(&close, &separator);
                 }
             }
 
-            if self.current_is(&seperator) {
+            if self.current_is(&separator) {
                 self.advance();
+                trailing_comma = true;
+                if self.current_is(&close) {
+                    break;
+                }
             } else if !self.current_is(&close) {
-                self.recover_to_seperator_or_closing(&close, &seperator);
+                self.recover_to_separator_or_closing(&close, &separator);
+                trailing_comma = false;
+            } else {
+                trailing_comma = false;
             }
         }
 
@@ -153,16 +176,16 @@ impl<'a> Parser<'a> {
                 }
             }
         }
-        elements
+        (elements, trailing_comma)
     }
 
-    fn recover_to_seperator_or_closing(&mut self, close: &TokenKind, seperator: &TokenKind) {
-        while !self.at_eof() && !self.current_is(close) && !self.current_is(seperator) {
+    fn recover_to_separator_or_closing(&mut self, close: &TokenKind, separator: &TokenKind) {
+        while !self.at_eof() && !self.current_is(close) && !self.current_is(separator) {
             self.advance();
         }
     }
 
-    fn is_junk_for_delim(&mut self, token: &TokenKind) -> bool {
+    fn is_junk_for_delim(&self, token: &TokenKind) -> bool {
         match token {
             TokenKind::ClosingDelimiter(_) | TokenKind::OpeningDelimiter(_) => false,
             TokenKind::Ident(_) | TokenKind::Literal(_) => false,
@@ -297,7 +320,7 @@ impl<'a> Parser<'a> {
 
     /// starts at '(', ends after ')'
     fn parse_params(&mut self) -> PResult<Vec<AstNode<Param>>> {
-        Ok(self.parse_seperated_delimited(
+        Ok(self.parse_separated_delimited(
             TokenKind::OpeningDelimiter(Delimiter::Paren),
             TokenKind::ClosingDelimiter(Delimiter::Paren),
             TokenKind::Punctuation(Punct::Comma),
@@ -344,13 +367,13 @@ impl<'a> Parser<'a> {
                 Pattern::Ident(ident)
             }
             TokenKind::OpeningDelimiter(Delimiter::Paren) => {
-                let elements = self.parse_seperated_delimited(
+                let (elements, trailing_comma) = self.parse_separated_delimited_with_trailing(
                     TokenKind::OpeningDelimiter(Delimiter::Paren),
                     TokenKind::ClosingDelimiter(Delimiter::Paren),
                     TokenKind::Punctuation(Punct::Comma),
                     |p| p.parse_pattern(),
                 );
-                if elements.len() == 1 {
+                if elements.len() == 1 && !trailing_comma {
                     Pattern::Paren(Box::new(elements[0].clone()))
                 } else {
                     Pattern::Tuple(elements)
@@ -367,7 +390,7 @@ impl<'a> Parser<'a> {
             return Ok(vec![]);
         }
 
-        Ok(self.parse_seperated_delimited(
+        Ok(self.parse_separated_delimited(
             TokenKind::Punctuation(Punct::Less),
             TokenKind::Punctuation(Punct::Greater),
             TokenKind::Punctuation(Punct::Comma),
@@ -444,7 +467,7 @@ impl<'a> Parser<'a> {
             return Ok(vec![]);
         }
 
-        Ok(self.parse_seperated_delimited(
+        Ok(self.parse_separated_delimited(
             TokenKind::Punctuation(Punct::Less),
             TokenKind::Punctuation(Punct::Greater),
             TokenKind::Punctuation(Punct::Comma),
@@ -471,7 +494,7 @@ impl<'a> Parser<'a> {
         let ty = match &self.current().kind {
             TokenKind::Keyword(Keyword::Fn) => {
                 self.advance();
-                let param_types = self.parse_seperated_delimited(
+                let param_types = self.parse_separated_delimited(
                     TokenKind::OpeningDelimiter(Delimiter::Paren),
                     TokenKind::ClosingDelimiter(Delimiter::Paren),
                     TokenKind::Punctuation(Punct::Comma),
@@ -512,14 +535,18 @@ impl<'a> Parser<'a> {
                 Ty::Ptr(Box::new(ty))
             }
             TokenKind::OpeningDelimiter(Delimiter::Paren) => {
-                let elements = self.parse_seperated_delimited(
+                let (elements, trailing_comma) = self.parse_separated_delimited_with_trailing(
                     TokenKind::OpeningDelimiter(Delimiter::Paren),
                     TokenKind::ClosingDelimiter(Delimiter::Paren),
                     TokenKind::Punctuation(Punct::Comma),
                     |p| p.parse_type(),
                 );
 
-                Ty::Tuple(elements)
+                if elements.len() == 1 && !trailing_comma {
+                    elements[0].node.clone()
+                } else {
+                    Ty::Tuple(elements)
+                }
             }
 
             _ => Ty::Path(self.parse_path()?),
@@ -600,7 +627,7 @@ impl<'a> Parser<'a> {
 
         let pat = self.parse_pattern()?;
 
-        let type_annotation = if self.current_is(&TokenKind::Punctuation(Punct::Colon)) {
+        let type_annotation = if self.consume(&[TokenKind::Punctuation(Punct::Colon)]) {
             Some(self.parse_type()?)
         } else {
             None
@@ -641,7 +668,7 @@ impl<'a> Parser<'a> {
         loop {
             match self.current().kind {
                 TokenKind::OpeningDelimiter(Delimiter::Paren) => {
-                    let args = self.parse_seperated_delimited(
+                    let args = self.parse_separated_delimited(
                         TokenKind::OpeningDelimiter(Delimiter::Paren),
                         TokenKind::ClosingDelimiter(Delimiter::Paren),
                         TokenKind::Punctuation(Punct::Comma),
@@ -727,27 +754,53 @@ impl<'a> Parser<'a> {
         let lo = self.current().span;
 
         let atom = match &self.current().kind {
-            TokenKind::Keyword(Keyword::True) => Expr::Literal(LiteralExpr::Bool(true)),
-            TokenKind::Keyword(Keyword::False) => Expr::Literal(LiteralExpr::Bool(false)),
-            TokenKind::Keyword(Keyword::Unit) => Expr::Literal(LiteralExpr::Unit),
-            TokenKind::Literal(lit) => match lit {
-                Literal::I32(i32) => Expr::Literal(LiteralExpr::I32(*i32)),
-                Literal::U32(u32) => Expr::Literal(LiteralExpr::U32(*u32)),
-                Literal::F64(f64) => Expr::Literal(LiteralExpr::F64(*f64)),
-                Literal::Str(str) => Expr::Literal(LiteralExpr::Str(str.clone())),
-            },
+            TokenKind::Keyword(Keyword::True) => {
+                self.advance();
+                Expr::Literal(LiteralExpr::Bool(true))
+            }
+            TokenKind::Keyword(Keyword::False) => {
+                self.advance();
+                Expr::Literal(LiteralExpr::Bool(false))
+            }
+            TokenKind::Keyword(Keyword::Unit) => {
+                self.advance();
+                Expr::Literal(LiteralExpr::Unit)
+            }
+            TokenKind::Literal(lit) => {
+                let expr = match lit {
+                    Literal::I32(i32) => Expr::Literal(LiteralExpr::I32(*i32)),
+                    Literal::U32(u32) => Expr::Literal(LiteralExpr::U32(*u32)),
+                    Literal::F64(f64) => Expr::Literal(LiteralExpr::F64(*f64)),
+                    Literal::Str(str) => Expr::Literal(LiteralExpr::Str(str.clone())),
+                };
+                self.advance();
+                expr
+            }
             TokenKind::Ident(_) => {
                 let path = self.parse_path()?;
                 Expr::Path(PathExpr { path })
             }
             TokenKind::OpeningDelimiter(Delimiter::Bracket) => {
-                let elems = self.parse_seperated_delimited(
+                let elems = self.parse_separated_delimited(
                     TokenKind::OpeningDelimiter(Delimiter::Bracket),
                     TokenKind::ClosingDelimiter(Delimiter::Bracket),
                     TokenKind::Punctuation(Punct::Comma),
                     |p| p.parse_expression(),
                 );
                 Expr::Array(ArrayExpr { expressions: elems })
+            }
+            TokenKind::OpeningDelimiter(Delimiter::Paren) => {
+                let (elems, trailing_comma) = self.parse_separated_delimited_with_trailing(
+                    TokenKind::OpeningDelimiter(Delimiter::Paren),
+                    TokenKind::ClosingDelimiter(Delimiter::Paren),
+                    TokenKind::Punctuation(Punct::Comma),
+                    |p| p.parse_expression(),
+                );
+                if elems.len() == 1 && !trailing_comma {
+                    Expr::Paren(Box::new(elems[0].clone()))
+                } else {
+                    Expr::Tuple(TupleExpr { expressions: elems })
+                }
             }
             TokenKind::OpeningDelimiter(Delimiter::Brace) => {
                 let block = self.parse_block()?;
@@ -767,7 +820,6 @@ impl<'a> Parser<'a> {
                 panic!()
             }
         };
-        self.advance();
 
         Ok(AstNode::new(atom, lo.to(self.previous().span)))
     }
