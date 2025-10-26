@@ -41,6 +41,7 @@ impl Ident {
     pub fn new(name: String) -> Self {
         Self { name }
     }
+
     pub fn err() -> Self {
         Self {
             name: "err".to_string(),

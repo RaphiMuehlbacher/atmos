@@ -3,8 +3,8 @@ use crate::extension::SourceSpanExt;
 use crate::lexer::token_kind::{Delimiter, Keyword, Literal, Punct};
 use crate::lexer::{Token, TokenKind};
 use crate::parser::ast::{
-    ArrayExpr, AstNode, BlockExpr, CallExpr, Crate, Expr, FieldAccessExpr, FnDecl, FnSig,
-    GenericArg, GenericParam, GenericParamKind, Ident, IfExpr, IndexExpr, Item, LetStmt,
+    ArrayExpr, AstNode, BlockExpr, BreakExpr, CallExpr, Crate, Expr, FieldAccessExpr, FnDecl,
+    FnSig, GenericArg, GenericParam, GenericParamKind, Ident, IfExpr, IndexExpr, Item, LetStmt,
     LiteralExpr, Param, Path, PathExpr, PathSegment, Pattern, Stmt, TupleExpr, Ty, UnOp, UnaryExpr,
     WhileExpr,
 };
@@ -200,7 +200,7 @@ impl<'a> Parser<'a> {
     }
 
     fn recover_item(&mut self) -> AstNode<Item> {
-        while !self.at_eof() && !self.token_begins_item() {
+        while !self.at_eof() && !self.current().begins_item() {
             self.advance();
         }
         AstNode::err(Item::Err)
@@ -218,21 +218,6 @@ impl<'a> Parser<'a> {
             self.current().kind,
             TokenKind::Punctuation(Punct::Semicolon)
                 | TokenKind::ClosingDelimiter(Delimiter::Brace)
-        )
-    }
-
-    fn token_begins_item(&self) -> bool {
-        matches!(
-            self.current().kind,
-            TokenKind::Keyword(Keyword::Fn)
-                | TokenKind::Keyword(Keyword::Struct)
-                | TokenKind::Keyword(Keyword::Enum)
-                | TokenKind::Keyword(Keyword::Impl)
-                | TokenKind::Keyword(Keyword::Trait)
-                | TokenKind::Keyword(Keyword::Extern)
-                | TokenKind::Keyword(Keyword::Const)
-                | TokenKind::Keyword(Keyword::Use)
-                | TokenKind::Keyword(Keyword::Type)
         )
     }
 }
@@ -604,7 +589,7 @@ impl<'a> Parser<'a> {
         let stmt = match self.current().kind {
             TokenKind::Keyword(Keyword::Let) => self.parse_let_stmt()?,
 
-            _ if self.token_begins_item() => {
+            _ if self.current().begins_item() => {
                 let item = self.parse_item()?;
                 AstNode::new(Stmt::Item(item), lo.to(self.previous().span))
             }
@@ -810,10 +795,13 @@ impl<'a> Parser<'a> {
                 let if_expr = self.parse_if_expr()?;
                 Expr::If(if_expr.node)
             }
-
             TokenKind::Keyword(Keyword::While) => {
                 let while_expr = self.parse_while_expr()?;
                 Expr::While(while_expr.node)
+            }
+            TokenKind::Keyword(Keyword::Break) => {
+                let break_expr = self.parse_break_expr()?;
+                Expr::Break(break_expr.node)
             }
 
             _ => {
@@ -826,8 +814,8 @@ impl<'a> Parser<'a> {
 
     fn parse_if_expr(&mut self) -> PResult<AstNode<IfExpr>> {
         let lo = self.current().span;
-
         self.advance();
+
         let condition = self.parse_expression()?;
         let then_branch = self.parse_block()?;
 
@@ -848,6 +836,34 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_while_expr(&mut self) -> PResult<AstNode<WhileExpr>> {
-        todo!()
+        let lo = self.current().span;
+        self.advance();
+
+        let condition = self.parse_expression()?;
+        let body = self.parse_block()?;
+
+        Ok(AstNode::new(
+            WhileExpr {
+                condition: Box::new(condition),
+                body: Box::new(body),
+            },
+            lo.to(self.previous().span),
+        ))
+    }
+
+    fn parse_break_expr(&mut self) -> PResult<AstNode<BreakExpr>> {
+        let lo = self.current().span;
+        self.advance();
+
+        let expr = if self.current().can_begin_expr() {
+            Some(Box::new(self.parse_expression()?))
+        } else {
+            None
+        };
+
+        Ok(AstNode::new(
+            BreakExpr { expr },
+            lo.to(self.previous().span),
+        ))
     }
 }
