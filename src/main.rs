@@ -19,6 +19,9 @@ fn main() {
     let mut parser = Parser::new(&session, tokens);
     let ast = parser.parse_crate();
 
+    if session.error_handler.borrow().error_count() == 0 {
+        dbg!(&ast);
+    }
+
     session.emit_all();
-    dbg!(&ast);
 }

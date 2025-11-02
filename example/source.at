@@ -1,3 +1,16 @@
+struct Person {
+    age: u32,
+    name: str,
+}
+
+impl Add<Person> for Person {
+    fn add(self: Self, other: Person) -> Person {
+        Person { age: self.age + other.age, name: self.name }
+    }
+}
+
 fn main() {
-    break 3;
+    let p1 = Person { age: 17, name: "Simon" };
+    let p2 = Person { age: 18, name: "Phillip" };
+    let p2 = p1 + p2;
 }

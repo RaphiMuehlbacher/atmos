@@ -20,4 +20,8 @@ impl ErrorHandler {
             println!("{report:?}");
         }
     }
+
+    pub fn error_count(&self) -> usize {
+        self.errors.len()
+    }
 }

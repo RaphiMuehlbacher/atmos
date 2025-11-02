@@ -1,6 +1,6 @@
-use crate::Session;
-use crate::lexer::token_kind::{Delimiter, Keyword, Literal, Punct};
+use crate::lexer::token_kind::{Delimiter, Kw, Literal, Punct};
 use crate::lexer::{LexerError, Token, TokenKind};
+use crate::Session;
 use miette::SourceSpan;
 
 pub struct Lexer<'sess> {
@@ -94,6 +94,13 @@ impl<'sess> Lexer<'sess> {
                         TokenKind::Punctuation(Punct::Percent)
                     }
                 }
+                '&' => {
+                    if self.match_char('&') {
+                        TokenKind::Punctuation(Punct::And)
+                    } else {
+                        TokenKind::Punctuation(Punct::Ampersand)
+                    }
+                }
                 '=' => {
                     if self.match_char('=') {
                         TokenKind::Punctuation(Punct::EqEq)
@@ -129,7 +136,13 @@ impl<'sess> Lexer<'sess> {
                 ';' => TokenKind::Punctuation(Punct::Semicolon),
                 '?' => TokenKind::Punctuation(Punct::Question),
                 '_' => TokenKind::Punctuation(Punct::Underscore),
-                '|' => TokenKind::Punctuation(Punct::Pipe),
+                '|' => {
+                    if self.match_char('|') {
+                        TokenKind::Punctuation(Punct::Or)
+                    } else {
+                        TokenKind::Punctuation(Punct::Pipe)
+                    }
+                }
                 ':' => {
                     if self.match_char(':') {
                         TokenKind::Punctuation(Punct::ColonColon)
@@ -290,34 +303,33 @@ impl<'sess> Lexer<'sess> {
         }
 
         match value.as_str() {
-            "let" => TokenKind::Keyword(Keyword::Let),
-            "fn" => TokenKind::Keyword(Keyword::Fn),
-            "return" => TokenKind::Keyword(Keyword::Return),
-            "if" => TokenKind::Keyword(Keyword::If),
-            "else" => TokenKind::Keyword(Keyword::Else),
-            "while" => TokenKind::Keyword(Keyword::While),
-            "for" => TokenKind::Keyword(Keyword::For),
-            "in" => TokenKind::Keyword(Keyword::In),
-            "break" => TokenKind::Keyword(Keyword::Break),
-            "continue" => TokenKind::Keyword(Keyword::Continue),
-            "struct" => TokenKind::Keyword(Keyword::Struct),
-            "enum" => TokenKind::Keyword(Keyword::Enum),
-            "trait" => TokenKind::Keyword(Keyword::Trait),
-            "match" => TokenKind::Keyword(Keyword::Match),
-            "impl" => TokenKind::Keyword(Keyword::Impl),
-            "pub" => TokenKind::Keyword(Keyword::Pub),
-            "mut" => TokenKind::Keyword(Keyword::Mut),
-            "type" => TokenKind::Keyword(Keyword::Type),
-            "as" => TokenKind::Keyword(Keyword::As),
-            "true" => TokenKind::Keyword(Keyword::True),
-            "false" => TokenKind::Keyword(Keyword::False),
-            "self" => TokenKind::Keyword(Keyword::SelfKw),
-            "super" => TokenKind::Keyword(Keyword::Super),
-            "use" => TokenKind::Keyword(Keyword::Use),
-            "where" => TokenKind::Keyword(Keyword::Where),
-            "extern" => TokenKind::Keyword(Keyword::Extern),
-            "const" => TokenKind::Keyword(Keyword::Const),
-            "unit" => TokenKind::Keyword(Keyword::Unit),
+            "let" => TokenKind::Keyword(Kw::Let),
+            "fn" => TokenKind::Keyword(Kw::Fn),
+            "return" => TokenKind::Keyword(Kw::Return),
+            "if" => TokenKind::Keyword(Kw::If),
+            "else" => TokenKind::Keyword(Kw::Else),
+            "while" => TokenKind::Keyword(Kw::While),
+            "loop" => TokenKind::Keyword(Kw::Loop),
+            "for" => TokenKind::Keyword(Kw::For),
+            "in" => TokenKind::Keyword(Kw::In),
+            "break" => TokenKind::Keyword(Kw::Break),
+            "continue" => TokenKind::Keyword(Kw::Continue),
+            "struct" => TokenKind::Keyword(Kw::Struct),
+            "enum" => TokenKind::Keyword(Kw::Enum),
+            "trait" => TokenKind::Keyword(Kw::Trait),
+            "match" => TokenKind::Keyword(Kw::Match),
+            "impl" => TokenKind::Keyword(Kw::Impl),
+            "pub" => TokenKind::Keyword(Kw::Pub),
+            "mut" => TokenKind::Keyword(Kw::Mut),
+            "type" => TokenKind::Keyword(Kw::Type),
+            "as" => TokenKind::Keyword(Kw::As),
+            "true" => TokenKind::Keyword(Kw::True),
+            "false" => TokenKind::Keyword(Kw::False),
+            "use" => TokenKind::Keyword(Kw::Use),
+            "where" => TokenKind::Keyword(Kw::Where),
+            "extern" => TokenKind::Keyword(Kw::Extern),
+            "const" => TokenKind::Keyword(Kw::Const),
+            "unit" => TokenKind::Keyword(Kw::Unit),
             _ => TokenKind::Ident(value),
         }
     }

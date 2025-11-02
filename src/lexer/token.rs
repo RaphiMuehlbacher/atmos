@@ -1,4 +1,4 @@
-use crate::lexer::token_kind::{Keyword, Punct};
+use crate::lexer::token_kind::{Kw, Punct};
 use crate::lexer::TokenKind;
 use miette::SourceSpan;
 use std::fmt::{Display, Formatter, Result};
@@ -29,15 +29,15 @@ impl Token {
     pub fn begins_item(&self) -> bool {
         matches!(
             self.kind,
-            TokenKind::Keyword(Keyword::Fn)
-                | TokenKind::Keyword(Keyword::Struct)
-                | TokenKind::Keyword(Keyword::Enum)
-                | TokenKind::Keyword(Keyword::Impl)
-                | TokenKind::Keyword(Keyword::Trait)
-                | TokenKind::Keyword(Keyword::Extern)
-                | TokenKind::Keyword(Keyword::Const)
-                | TokenKind::Keyword(Keyword::Use)
-                | TokenKind::Keyword(Keyword::Type)
+            TokenKind::Keyword(Kw::Fn)
+                | TokenKind::Keyword(Kw::Struct)
+                | TokenKind::Keyword(Kw::Enum)
+                | TokenKind::Keyword(Kw::Impl)
+                | TokenKind::Keyword(Kw::Trait)
+                | TokenKind::Keyword(Kw::Extern)
+                | TokenKind::Keyword(Kw::Const)
+                | TokenKind::Keyword(Kw::Use)
+                | TokenKind::Keyword(Kw::Type)
         )
     }
 }

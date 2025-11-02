@@ -7,7 +7,7 @@ pub enum TokenKind {
     Punctuation(Punct),
     OpeningDelimiter(Delimiter),
     ClosingDelimiter(Delimiter),
-    Keyword(Keyword),
+    Keyword(Kw),
     EOF,
 }
 
@@ -34,6 +34,7 @@ pub enum Punct {
     Slash,      // '/'
     Percent,    // '%'
     Ampersand,  // '&'
+    And,        // '&&'
     PlusEq,     // '+='
     MinusEq,    // '-='
     StarEq,     // '*='
@@ -57,16 +58,18 @@ pub enum Punct {
     ColonColon, // '::'
     Underscore, // '_'
     Pipe,       // '|'
+    Or,         // '||'
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum Keyword {
+pub enum Kw {
     Let,      // 'let'
     Fn,       // 'fn'
     Return,   // 'return'
     If,       // 'if'
     Else,     // 'else'
     While,    // 'while'
+    Loop,     // 'loop'
     For,      // 'for'
     In,       // 'in'
     Break,    // 'break'
@@ -82,13 +85,50 @@ pub enum Keyword {
     As,       // 'as'
     True,     // 'true'
     False,    // 'false'
-    SelfKw,   // 'self'
-    Super,    // 'super'
     Use,      // 'use'
     Where,    // 'where'
     Extern,   // 'extern'
     Const,    // 'const'
     Unit,     // 'unit'
+}
+
+impl TokenKind {
+    pub fn is_right_associative(&self) -> bool {
+        matches!(
+            self,
+            TokenKind::Punctuation(Punct::Eq)
+                | TokenKind::Punctuation(Punct::PlusEq)
+                | TokenKind::Punctuation(Punct::MinusEq)
+                | TokenKind::Punctuation(Punct::StarEq)
+                | TokenKind::Punctuation(Punct::SlashEq)
+                | TokenKind::Punctuation(Punct::PercentEq)
+        )
+    }
+
+    pub fn is_infix_op(&self) -> bool {
+        matches!(
+            self,
+            TokenKind::Punctuation(Punct::Plus)
+                | TokenKind::Punctuation(Punct::Minus)
+                | TokenKind::Punctuation(Punct::Star)
+                | TokenKind::Punctuation(Punct::Slash)
+                | TokenKind::Punctuation(Punct::Percent)
+                | TokenKind::Punctuation(Punct::And)
+                | TokenKind::Punctuation(Punct::Or)
+                | TokenKind::Punctuation(Punct::Eq)
+                | TokenKind::Punctuation(Punct::PlusEq)
+                | TokenKind::Punctuation(Punct::MinusEq)
+                | TokenKind::Punctuation(Punct::StarEq)
+                | TokenKind::Punctuation(Punct::SlashEq)
+                | TokenKind::Punctuation(Punct::PercentEq)
+                | TokenKind::Punctuation(Punct::EqEq)
+                | TokenKind::Punctuation(Punct::NotEq)
+                | TokenKind::Punctuation(Punct::Less)
+                | TokenKind::Punctuation(Punct::LessEq)
+                | TokenKind::Punctuation(Punct::Greater)
+                | TokenKind::Punctuation(Punct::GreaterEq)
+        )
+    }
 }
 
 impl Display for TokenKind {
@@ -139,6 +179,7 @@ impl Display for Punct {
             Punct::Slash => "/",
             Punct::Percent => "%",
             Punct::Ampersand => "&",
+            Punct::And => "&&",
             Punct::PlusEq => "+=",
             Punct::MinusEq => "-=",
             Punct::StarEq => "*=",
@@ -162,42 +203,42 @@ impl Display for Punct {
             Punct::ColonColon => "::",
             Punct::Underscore => "_",
             Punct::Pipe => "|",
+            Punct::Or => "||",
         };
         write!(f, "{}", s)
     }
 }
 
-impl Display for Keyword {
+impl Display for Kw {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         let s = match self {
-            Keyword::Let => "let",
-            Keyword::Fn => "fn",
-            Keyword::Return => "return",
-            Keyword::If => "if",
-            Keyword::Else => "else",
-            Keyword::While => "while",
-            Keyword::For => "for",
-            Keyword::In => "in",
-            Keyword::Break => "break",
-            Keyword::Continue => "continue",
-            Keyword::Struct => "struct",
-            Keyword::Enum => "enum",
-            Keyword::Trait => "trait",
-            Keyword::Match => "match",
-            Keyword::Impl => "impl",
-            Keyword::Pub => "pub",
-            Keyword::Mut => "mut",
-            Keyword::Type => "type",
-            Keyword::As => "as",
-            Keyword::True => "true",
-            Keyword::False => "false",
-            Keyword::SelfKw => "self",
-            Keyword::Super => "super",
-            Keyword::Use => "use",
-            Keyword::Where => "where",
-            Keyword::Extern => "extern",
-            Keyword::Const => "const",
-            Keyword::Unit => "unit",
+            Kw::Let => "let",
+            Kw::Fn => "fn",
+            Kw::Return => "return",
+            Kw::If => "if",
+            Kw::Else => "else",
+            Kw::While => "while",
+            Kw::Loop => "loop",
+            Kw::For => "for",
+            Kw::In => "in",
+            Kw::Break => "break",
+            Kw::Continue => "continue",
+            Kw::Struct => "struct",
+            Kw::Enum => "enum",
+            Kw::Trait => "trait",
+            Kw::Match => "match",
+            Kw::Impl => "impl",
+            Kw::Pub => "pub",
+            Kw::Mut => "mut",
+            Kw::Type => "type",
+            Kw::As => "as",
+            Kw::True => "true",
+            Kw::False => "false",
+            Kw::Use => "use",
+            Kw::Where => "where",
+            Kw::Extern => "extern",
+            Kw::Const => "const",
+            Kw::Unit => "unit",
         };
         write!(f, "{}", s)
     }

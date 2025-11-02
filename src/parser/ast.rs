@@ -1,4 +1,6 @@
 use crate::extension::SourceSpanExt;
+use crate::lexer::token_kind::Punct;
+use crate::lexer::{Token, TokenKind};
 use miette::SourceSpan;
 
 #[derive(Copy, Debug, Clone, PartialEq, Eq, Hash)]
@@ -90,7 +92,7 @@ pub enum Ty {
 pub enum Pattern {
     Wildcard,
     Or(Vec<AstNode<Pattern>>),
-    Ident(AstNode<Ident>),
+    Ident(AstNode<Path>),
     Struct(AstNode<Path>, Vec<AstNode<PatternStructField>>),
     TupleStruct(AstNode<Path>, Vec<AstNode<Pattern>>),
     Tuple(Vec<AstNode<Pattern>>),
@@ -106,8 +108,8 @@ pub struct PatternStructField {
 
 #[derive(Debug, Clone)]
 pub enum AssociatedItem {
-    Fn(Box<AstNode<FnDecl>>),
-    Type(Box<AstNode<TyAliasDecl>>),
+    Fn(AstNode<FnSig>, Option<AstNode<BlockExpr>>),
+    Type(AstNode<TyAliasDecl>),
 }
 
 #[derive(Debug, Clone)]
@@ -152,8 +154,6 @@ pub struct FnDecl {
 
 #[derive(Debug, Clone)]
 pub struct ExternFnDecl {
-    /// Span of the 'extern' keyword
-    pub span: SourceSpan,
     pub sig: AstNode<FnSig>,
 }
 
@@ -174,9 +174,9 @@ pub struct Param {
 #[derive(Debug, Clone)]
 pub struct ConstDecl {
     pub ident: AstNode<Ident>,
-    pub generics: Vec<GenericParam>,
+    pub generics: Vec<AstNode<GenericParam>>,
     pub type_annotation: Option<AstNode<Ty>>,
-    pub expr: Option<AstNode<Expr>>,
+    pub expr: AstNode<Expr>,
 }
 
 #[derive(Debug, Clone)]
@@ -225,8 +225,8 @@ pub struct StructFieldDef {
 #[derive(Debug, Clone)]
 pub struct StructDecl {
     pub ident: AstNode<Ident>,
-    pub data: AstNode<VariantData>,
     pub generics: Vec<AstNode<GenericParam>>,
+    pub data: AstNode<VariantData>,
 }
 
 #[derive(Debug, Clone)]
@@ -248,7 +248,7 @@ pub struct ImplDecl {
 pub struct TyAliasDecl {
     pub ident: AstNode<Ident>,
     pub generics: Vec<AstNode<GenericParam>>,
-    pub ty: AstNode<Ty>,
+    pub ty: Option<AstNode<Ty>>,
 }
 
 #[derive(Debug, Clone)]
@@ -285,8 +285,8 @@ pub enum Expr {
     Block(BlockExpr),
     Match(MatchExpr),
     Let(LetExpr),
-    Err,
     Paren(Box<AstNode<Expr>>),
+    Err,
 }
 
 #[derive(Debug, Clone)]
@@ -361,8 +361,8 @@ pub struct AssignExpr {
 
 #[derive(Debug, Clone)]
 pub struct AssignOpExpr {
-    pub op: AssignOp,
     pub target: Box<AstNode<Expr>>,
+    pub op: AstNode<AssignOp>,
     pub value: Box<AstNode<Expr>>,
 }
 
@@ -464,12 +464,49 @@ pub enum BinOp {
     NotEq,
 }
 
+impl TryFrom<&Token> for BinOp {
+    type Error = ();
+
+    fn try_from(token: &Token) -> Result<Self, Self::Error> {
+        match &token.kind {
+            TokenKind::Punctuation(Punct::Plus) => Ok(BinOp::Add),
+            TokenKind::Punctuation(Punct::Minus) => Ok(BinOp::Sub),
+            TokenKind::Punctuation(Punct::Star) => Ok(BinOp::Mul),
+            TokenKind::Punctuation(Punct::Slash) => Ok(BinOp::Div),
+            TokenKind::Punctuation(Punct::Percent) => Ok(BinOp::Rem),
+            TokenKind::Punctuation(Punct::And) => Ok(BinOp::And),
+            TokenKind::Punctuation(Punct::Or) => Ok(BinOp::Or),
+            TokenKind::Punctuation(Punct::EqEq) => Ok(BinOp::EqEq),
+            TokenKind::Punctuation(Punct::Less) => Ok(BinOp::Less),
+            TokenKind::Punctuation(Punct::LessEq) => Ok(BinOp::LessEq),
+            TokenKind::Punctuation(Punct::Greater) => Ok(BinOp::Greater),
+            TokenKind::Punctuation(Punct::GreaterEq) => Ok(BinOp::GreaterEq),
+            TokenKind::Punctuation(Punct::NotEq) => Ok(BinOp::NotEq),
+            _ => Err(()),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum UnOp {
     Deref,
     Not,
     Neg,
     AddrOf,
+}
+
+impl TryFrom<&Token> for UnOp {
+    type Error = ();
+
+    fn try_from(token: &Token) -> Result<Self, Self::Error> {
+        match &token.kind {
+            TokenKind::Punctuation(Punct::Star) => Ok(UnOp::Deref),
+            TokenKind::Punctuation(Punct::Bang) => Ok(UnOp::Not),
+            TokenKind::Punctuation(Punct::Minus) => Ok(UnOp::Neg),
+            TokenKind::Punctuation(Punct::Ampersand) => Ok(UnOp::AddrOf),
+            _ => Err(()),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -479,4 +516,19 @@ pub enum AssignOp {
     MulAssign,
     DivAssign,
     RemAssign,
+}
+
+impl TryFrom<&Token> for AssignOp {
+    type Error = ();
+
+    fn try_from(token: &Token) -> Result<Self, Self::Error> {
+        match &token.kind {
+            TokenKind::Punctuation(Punct::PlusEq) => Ok(AssignOp::AddAssign),
+            TokenKind::Punctuation(Punct::MinusEq) => Ok(AssignOp::SubAssign),
+            TokenKind::Punctuation(Punct::StarEq) => Ok(AssignOp::MulAssign),
+            TokenKind::Punctuation(Punct::SlashEq) => Ok(AssignOp::DivAssign),
+            TokenKind::Punctuation(Punct::PercentEq) => Ok(AssignOp::RemAssign),
+            _ => Err(()),
+        }
+    }
 }

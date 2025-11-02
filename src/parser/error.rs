@@ -16,7 +16,7 @@ pub enum ParserError {
         found: TokenKind,
     },
 
-    #[error("Expected {expected}, found `{found}`")]
+    #[error("Expected `{expected}`, found `{found}`")]
     #[diagnostic(code(parser::unexpected_token))]
     UnexpectedToken {
         #[source_code]

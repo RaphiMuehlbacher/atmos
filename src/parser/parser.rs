@@ -1,12 +1,15 @@
 use crate::error::CompilerError;
 use crate::extension::SourceSpanExt;
-use crate::lexer::token_kind::{Delimiter, Keyword, Literal, Punct};
+use crate::lexer::token_kind::{Delimiter, Kw, Literal, Punct};
 use crate::lexer::{Token, TokenKind};
 use crate::parser::ast::{
-    ArrayExpr, AstNode, BlockExpr, BreakExpr, CallExpr, Crate, Expr, FieldAccessExpr, FnDecl,
-    FnSig, GenericArg, GenericParam, GenericParamKind, Ident, IfExpr, IndexExpr, Item, LetStmt,
-    LiteralExpr, Param, Path, PathExpr, PathSegment, Pattern, Stmt, TupleExpr, Ty, UnOp, UnaryExpr,
-    WhileExpr,
+    ArrayExpr, AssignExpr, AssignOp, AssignOpExpr, AssociatedItem, AstNode, BinOp, BinaryExpr,
+    BlockExpr, BreakExpr, CallExpr, CastExpr, ConstDecl, Crate, EnumDecl, EnumVariant, Expr,
+    ExternFnDecl, FieldAccessExpr, FnDecl, FnSig, ForExpr, GenericArg, GenericParam,
+    GenericParamKind, Ident, IfExpr, ImplDecl, IndexExpr, Item, LetExpr, LetStmt, LiteralExpr,
+    LoopExpr, MatchArm, MatchExpr, Param, Path, PathExpr, PathSegment, Pattern, PatternStructField,
+    ReturnExpr, Stmt, StructDecl, StructExpr, StructExprField, StructFieldDef, TraitDecl,
+    TupleExpr, Ty, TyAliasDecl, UnOp, UnaryExpr, UseItem, VariantData, WhileExpr,
 };
 use crate::parser::ParserError;
 use crate::Session;
@@ -86,6 +89,87 @@ impl<'a> Parser<'a> {
             .0
     }
 
+    fn parse_delimited<T, F>(
+        &mut self,
+        open: TokenKind,
+        close: TokenKind,
+        mut parse_element: F,
+    ) -> Vec<T>
+    where
+        F: FnMut(&mut Self) -> PResult<T>,
+    {
+        let open_span = self.current().span;
+        let mut delimiter_err_emitted = false;
+
+        if self.current_is(&open) {
+            self.advance();
+        } else {
+            self.emit(ParserError::UnexpectedToken {
+                src: self.session.get_named_source(),
+                span: self.current().span,
+                found: self.current().kind.clone(),
+                expected: open,
+            });
+
+            delimiter_err_emitted = true;
+
+            if self.is_junk_for_delim(&self.current().kind.clone()) {
+                self.advance();
+            }
+        }
+
+        let mut elements = vec![];
+        loop {
+            if self.current_is(&close) || self.at_eof() {
+                break;
+            }
+
+            match parse_element(self) {
+                Ok(element) => elements.push(element),
+                Err(err) => {
+                    self.emit(err);
+                    // Recover to closing delimiter
+                    while !self.at_eof() && !self.current_is(&close) {
+                        self.advance();
+                    }
+                    break;
+                }
+            }
+        }
+        if self.current_is(&close) {
+            self.advance();
+        } else if !delimiter_err_emitted {
+            match &self.current().kind {
+                TokenKind::EOF => {
+                    self.emit(ParserError::UnclosedDelimiter {
+                        src: self.session.get_named_source(),
+                        span: self.current().span,
+                        delimiter: close,
+                    });
+                }
+                other_delimiter if matches!(other_delimiter, TokenKind::ClosingDelimiter(_)) => {
+                    self.emit(ParserError::MismatchedDelimiter {
+                        src: self.session.get_named_source(),
+                        closing_span: self.current().span,
+                        opening_span: open_span,
+                        found: other_delimiter.clone(),
+                        expected: close,
+                    });
+                    self.advance();
+                }
+                other => {
+                    self.emit(ParserError::UnexpectedToken {
+                        src: self.session.get_named_source(),
+                        span: self.current().span,
+                        found: other.clone(),
+                        expected: close,
+                    });
+                }
+            }
+        }
+        elements
+    }
+
     fn parse_separated_delimited_with_trailing<T, F>(
         &mut self,
         open: TokenKind,
@@ -131,8 +215,7 @@ impl<'a> Parser<'a> {
                 }
             }
 
-            if self.current_is(&separator) {
-                self.advance();
+            if self.consume(&[separator.clone()]) {
                 trailing_comma = true;
                 if self.current_is(&close) {
                     break;
@@ -251,31 +334,324 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_item(&mut self) -> PResult<AstNode<Item>> {
-        if self.check(&[TokenKind::Keyword(Keyword::Fn)]) {
-            self.parse_fn_item()
-        } else {
-            todo!()
+        match self.current().kind {
+            TokenKind::Keyword(Kw::Fn) => self.parse_fn_item(),
+            TokenKind::Keyword(Kw::Struct) => self.parse_struct_item(),
+            TokenKind::Keyword(Kw::Enum) => self.parse_enum_item(),
+            TokenKind::Keyword(Kw::Trait) => self.parse_trait_item(),
+            TokenKind::Keyword(Kw::Impl) => self.parse_impl_item(),
+            TokenKind::Keyword(Kw::Extern) => self.parse_extern_fn_item(),
+            TokenKind::Keyword(Kw::Const) => self.parse_const_item(),
+            TokenKind::Keyword(Kw::Use) => self.parse_use_item(),
+            TokenKind::Keyword(Kw::Type) => self.parse_type_alias_item(),
+            _ => panic!(),
         }
+    }
+
+    fn parse_type_alias(&mut self) -> PResult<AstNode<TyAliasDecl>> {
+        let lo = self.current().span;
+        self.advance();
+
+        let ident = self.parse_ident()?;
+        let generics = self.parse_generic_params()?;
+
+        self.consume(&[TokenKind::Punctuation(Punct::Eq)]);
+
+        let ty = if self.check(&[TokenKind::Punctuation(Punct::Semicolon)]) {
+            self.advance();
+            None
+        } else {
+            let ty = self.parse_type()?;
+            self.consume(&[TokenKind::Punctuation(Punct::Semicolon)]);
+            Some(ty)
+        };
+
+        Ok(AstNode::new(
+            TyAliasDecl {
+                ident,
+                generics,
+                ty,
+            },
+            lo.to(self.previous().span),
+        ))
+    }
+
+    fn parse_extern_fn_item(&mut self) -> PResult<AstNode<Item>> {
+        let lo = self.current().span;
+        self.advance();
+
+        let sig = self.parse_fn_sig()?;
+        self.consume(&[TokenKind::Punctuation(Punct::Semicolon)]);
+
+        Ok(AstNode::new(
+            Item::ExternFn(ExternFnDecl { sig }),
+            lo.to(self.previous().span),
+        ))
+    }
+
+    fn parse_const_item(&mut self) -> PResult<AstNode<Item>> {
+        let lo = self.current().span;
+        self.advance();
+
+        let ident = self.parse_ident()?;
+        let generics = self.parse_generic_params()?;
+
+        let type_annotation = if self.consume(&[TokenKind::Punctuation(Punct::Colon)]) {
+            Some(self.parse_type()?)
+        } else {
+            None
+        };
+
+        self.consume(&[TokenKind::Punctuation(Punct::Eq)]);
+
+        let expr = self.parse_expression()?;
+
+        self.consume(&[TokenKind::Punctuation(Punct::Semicolon)]);
+
+        Ok(AstNode::new(
+            Item::Const(ConstDecl {
+                ident,
+                generics,
+                type_annotation,
+                expr,
+            }),
+            lo.to(self.previous().span),
+        ))
+    }
+
+    fn parse_use_item(&mut self) -> PResult<AstNode<Item>> {
+        let lo = self.current().span;
+        self.advance();
+
+        let path = self.parse_path()?;
+        self.consume(&[TokenKind::Punctuation(Punct::Semicolon)]);
+
+        Ok(AstNode::new(
+            Item::Use(UseItem { path }),
+            lo.to(self.previous().span),
+        ))
+    }
+
+    fn parse_type_alias_item(&mut self) -> PResult<AstNode<Item>> {
+        let ty_alias = self.parse_type_alias()?;
+        Ok(AstNode::new(
+            Item::TyAlias(ty_alias.node),
+            ty_alias.span.to(self.previous().span),
+        ))
+    }
+
+    fn parse_associated_items(&mut self) -> PResult<Vec<AstNode<AssociatedItem>>> {
+        let items = self.parse_delimited(
+            TokenKind::OpeningDelimiter(Delimiter::Brace),
+            TokenKind::ClosingDelimiter(Delimiter::Brace),
+            |p| p.parse_associated_item(),
+        );
+        Ok(items)
+    }
+
+    fn parse_associated_item(&mut self) -> PResult<AstNode<AssociatedItem>> {
+        let lo = self.current().span;
+
+        let item = match self.current().kind {
+            TokenKind::Keyword(Kw::Fn) => {
+                let fn_decl = self.parse_fn_sig()?;
+                let body = match self.current().kind {
+                    TokenKind::Punctuation(Punct::Semicolon) => {
+                        self.advance();
+                        None
+                    }
+                    TokenKind::OpeningDelimiter(Delimiter::Brace) => Some(self.parse_block()?),
+                    _ => todo!(),
+                };
+
+                AssociatedItem::Fn(fn_decl, body)
+            }
+            TokenKind::Keyword(Kw::Type) => {
+                let ty_alias = self.parse_type_alias()?;
+                AssociatedItem::Type(ty_alias)
+            }
+            _ => todo!(),
+        };
+
+        Ok(AstNode::new(item, lo.to(self.previous().span)))
+    }
+
+    fn parse_impl_item(&mut self) -> PResult<AstNode<Item>> {
+        let lo = self.current().span;
+        self.advance();
+
+        let ident = self.parse_ident()?;
+        let generics = self.parse_generic_params()?;
+
+        let for_trait = if self.consume(&[TokenKind::Keyword(Kw::For)]) {
+            let path = self.parse_path()?;
+            Some(path)
+        } else {
+            None
+        };
+
+        let items = self.parse_associated_items()?;
+
+        Ok(AstNode::new(
+            Item::Impl(ImplDecl {
+                ident,
+                generics,
+                for_trait,
+                items,
+            }),
+            lo.to(self.previous().span),
+        ))
+    }
+
+    fn parse_trait_item(&mut self) -> PResult<AstNode<Item>> {
+        let lo = self.current().span;
+        self.advance();
+
+        let ident = self.parse_ident()?;
+        let generics = self.parse_generic_params()?;
+        let items = self.parse_associated_items()?;
+
+        Ok(AstNode::new(
+            Item::Trait(TraitDecl {
+                ident,
+                generics,
+                items,
+            }),
+            lo.to(self.previous().span),
+        ))
+    }
+
+    fn parse_enum_item(&mut self) -> PResult<AstNode<Item>> {
+        let lo = self.current().span;
+        self.advance();
+
+        let ident = self.parse_ident()?;
+        let generics = self.parse_generic_params()?;
+
+        let variants = self.parse_separated_delimited(
+            TokenKind::OpeningDelimiter(Delimiter::Brace),
+            TokenKind::ClosingDelimiter(Delimiter::Brace),
+            TokenKind::Punctuation(Punct::Colon),
+            |p| p.parse_enum_variant(),
+        );
+
+        Ok(AstNode::new(
+            Item::Enum(EnumDecl {
+                ident,
+                generics,
+                variants,
+            }),
+            lo.to(self.previous().span),
+        ))
+    }
+
+    fn parse_enum_variant(&mut self) -> PResult<AstNode<EnumVariant>> {
+        let lo = self.current().span;
+
+        let ident = self.parse_ident()?;
+        let variant = self.parse_variant_data()?;
+
+        Ok(AstNode::new(
+            EnumVariant {
+                ident,
+                data: variant,
+            },
+            lo.to(self.previous().span),
+        ))
+    }
+
+    fn parse_variant_data(&mut self) -> PResult<AstNode<VariantData>> {
+        let lo = self.previous().span;
+
+        let variant = match self.current().kind {
+            TokenKind::OpeningDelimiter(Delimiter::Brace) => {
+                let fields = self.parse_separated_delimited(
+                    TokenKind::OpeningDelimiter(Delimiter::Brace),
+                    TokenKind::ClosingDelimiter(Delimiter::Brace),
+                    TokenKind::Punctuation(Punct::Comma),
+                    |p| p.parse_struct_item_field(),
+                );
+                VariantData::Struct { fields }
+            }
+            TokenKind::OpeningDelimiter(Delimiter::Paren) => {
+                let types = self.parse_separated_delimited(
+                    TokenKind::OpeningDelimiter(Delimiter::Paren),
+                    TokenKind::ClosingDelimiter(Delimiter::Paren),
+                    TokenKind::Punctuation(Punct::Comma),
+                    |p| p.parse_type(),
+                );
+                VariantData::Tuple { types }
+            }
+            TokenKind::Punctuation(Punct::Semicolon) => VariantData::Unit,
+            _ => VariantData::Unit,
+        };
+        Ok(AstNode::new(variant, lo.to(self.previous().span)))
+    }
+    fn parse_struct_item(&mut self) -> PResult<AstNode<Item>> {
+        let lo = self.current().span;
+        self.advance();
+
+        let ident = self.parse_ident()?;
+        let generics = self.parse_generic_params()?;
+        let variant = self.parse_variant_data()?;
+
+        if !matches!(variant.node, VariantData::Struct { .. }) {
+            self.consume(&[TokenKind::Punctuation(Punct::Semicolon)]);
+        }
+
+        Ok(AstNode::new(
+            Item::Struct(StructDecl {
+                ident,
+                generics,
+                data: variant,
+            }),
+            lo.to(self.previous().span),
+        ))
+    }
+
+    fn parse_struct_item_field(&mut self) -> PResult<AstNode<StructFieldDef>> {
+        let lo = self.current().span;
+
+        let ident = self.parse_ident()?;
+        self.consume(&[TokenKind::Punctuation(Punct::Colon)]);
+        let ty = self.parse_type()?;
+
+        Ok(AstNode::new(
+            StructFieldDef {
+                ident,
+                type_annotation: ty,
+            },
+            lo.to(self.previous().span),
+        ))
     }
 
     /// fn a(b: i32) -> i32 { b }
     /// starts at 'fn', ends after the block
     fn parse_fn_item(&mut self) -> PResult<AstNode<Item>> {
+        let fn_decl = self.parse_fn_decl()?;
+
+        Ok(AstNode::new(
+            Item::Fn(fn_decl.node),
+            fn_decl.span.to(self.previous().span),
+        ))
+    }
+
+    fn parse_fn_decl(&mut self) -> PResult<AstNode<FnDecl>> {
         let lo = self.current().span;
-        self.advance();
 
         let sig = self.parse_fn_sig()?;
         let body = self.parse_block()?;
 
         Ok(AstNode::new(
-            Item::Fn(FnDecl { sig, body }),
+            FnDecl { sig, body },
             lo.to(self.previous().span),
         ))
     }
 
-    // starts at the function name, ends before the block
+    // starts at the `fn` keyword, ends before the block
     fn parse_fn_sig(&mut self) -> PResult<AstNode<FnSig>> {
         let lo = self.current().span;
+        self.advance();
 
         let ident = self.parse_ident()?;
         let generics = self.parse_generic_params()?;
@@ -342,14 +718,51 @@ impl<'a> Parser<'a> {
     fn parse_pattern(&mut self) -> PResult<AstNode<Pattern>> {
         let lo = self.current().span;
 
+        let mut pattern = self.parse_pattern_no_or()?;
+
+        if self.check(&[TokenKind::Punctuation(Punct::Pipe)]) {
+            let mut patterns = vec![pattern];
+            while self.consume(&[TokenKind::Punctuation(Punct::Pipe)]) {
+                patterns.push(self.parse_pattern_no_or()?);
+            }
+            pattern = AstNode::new(Pattern::Or(patterns), lo.to(self.previous().span));
+        }
+
+        Ok(pattern)
+    }
+
+    fn parse_pattern_no_or(&mut self) -> PResult<AstNode<Pattern>> {
+        let lo = self.current().span;
+
         let pattern = match &self.current().kind {
             TokenKind::Punctuation(Punct::Underscore) => {
                 self.advance();
                 Pattern::Wildcard
             }
             TokenKind::Ident(_) => {
-                let ident = self.parse_ident()?;
-                Pattern::Ident(ident)
+                let path = self.parse_path()?;
+
+                if self.check(&[TokenKind::OpeningDelimiter(Delimiter::Brace)]) {
+                    // Struct pattern: Path { field: pattern, ... }
+                    let fields = self.parse_separated_delimited(
+                        TokenKind::OpeningDelimiter(Delimiter::Brace),
+                        TokenKind::ClosingDelimiter(Delimiter::Brace),
+                        TokenKind::Punctuation(Punct::Comma),
+                        |p| p.parse_pattern_struct_field(),
+                    );
+                    Pattern::Struct(path, fields)
+                } else if self.check(&[TokenKind::OpeningDelimiter(Delimiter::Paren)]) {
+                    // TupleStruct pattern: Path(pattern, ...)
+                    let patterns = self.parse_separated_delimited(
+                        TokenKind::OpeningDelimiter(Delimiter::Paren),
+                        TokenKind::ClosingDelimiter(Delimiter::Paren),
+                        TokenKind::Punctuation(Punct::Comma),
+                        |p| p.parse_pattern(),
+                    );
+                    Pattern::TupleStruct(path, patterns)
+                } else {
+                    Pattern::Ident(path)
+                }
             }
             TokenKind::OpeningDelimiter(Delimiter::Paren) => {
                 let (elements, trailing_comma) = self.parse_separated_delimited_with_trailing(
@@ -364,10 +777,27 @@ impl<'a> Parser<'a> {
                     Pattern::Tuple(elements)
                 }
             }
+            TokenKind::Literal(_) => {
+                let expr = self.parse_expression()?;
+                Pattern::Expr(Box::new(expr))
+            }
             _ => panic!("Expected Pattern"),
         };
 
         Ok(AstNode::new(pattern, lo.to(self.previous().span)))
+    }
+
+    fn parse_pattern_struct_field(&mut self) -> PResult<AstNode<PatternStructField>> {
+        let lo = self.current().span;
+
+        let ident = self.parse_ident()?;
+        self.consume(&[TokenKind::Punctuation(Punct::Colon)]);
+        let pattern = self.parse_pattern()?;
+
+        Ok(AstNode::new(
+            PatternStructField { ident, pattern },
+            lo.to(self.previous().span),
+        ))
     }
 
     fn parse_generic_params(&mut self) -> PResult<Vec<AstNode<GenericParam>>> {
@@ -386,7 +816,7 @@ impl<'a> Parser<'a> {
     fn parse_generic_param(&mut self) -> PResult<AstNode<GenericParam>> {
         let lo = self.current().span;
 
-        let is_const = self.consume(&[TokenKind::Keyword(Keyword::Const)]);
+        let is_const = self.consume(&[TokenKind::Keyword(Kw::Const)]);
         let ident = self.parse_ident()?;
 
         let bounds = if !is_const && self.consume(&[TokenKind::Punctuation(Punct::Colon)]) {
@@ -463,7 +893,7 @@ impl<'a> Parser<'a> {
     fn parse_generic_arg(&mut self) -> PResult<AstNode<GenericArg>> {
         let lo = self.current().span;
 
-        let generic_arg = if self.consume(&[TokenKind::Keyword(Keyword::Const)]) {
+        let generic_arg = if self.consume(&[TokenKind::Keyword(Kw::Const)]) {
             let expr = self.parse_expression()?;
             GenericArg::Const(Box::new(expr))
         } else {
@@ -477,7 +907,7 @@ impl<'a> Parser<'a> {
         let lo = self.current().span;
 
         let ty = match &self.current().kind {
-            TokenKind::Keyword(Keyword::Fn) => {
+            TokenKind::Keyword(Kw::Fn) => {
                 self.advance();
                 let param_types = self.parse_separated_delimited(
                     TokenKind::OpeningDelimiter(Delimiter::Paren),
@@ -569,11 +999,10 @@ impl<'a> Parser<'a> {
 
         let mut stmts = vec![];
 
-        while !self.consume(&[TokenKind::ClosingDelimiter(Delimiter::Brace)]) {
-            if self.at_eof() {
-                break;
-            }
-
+        while !self.consume(&[
+            TokenKind::ClosingDelimiter(Delimiter::Brace),
+            TokenKind::EOF,
+        ]) {
             let stmt = self.parse_statement()?;
             stmts.push(stmt);
         }
@@ -587,7 +1016,7 @@ impl<'a> Parser<'a> {
         let lo = self.current().span;
 
         let stmt = match self.current().kind {
-            TokenKind::Keyword(Keyword::Let) => self.parse_let_stmt()?,
+            TokenKind::Keyword(Kw::Let) => self.parse_let_stmt()?,
 
             _ if self.current().begins_item() => {
                 let item = self.parse_item()?;
@@ -651,7 +1080,12 @@ impl<'a> Parser<'a> {
         let mut lhs = self.parse_prefix()?;
 
         loop {
-            match self.current().kind {
+            let (left_bp, right_bp) = self.current_precedence();
+            if left_bp < min_prec {
+                break;
+            }
+
+            match self.current().kind.clone() {
                 TokenKind::OpeningDelimiter(Delimiter::Paren) => {
                     let args = self.parse_separated_delimited(
                         TokenKind::OpeningDelimiter(Delimiter::Paren),
@@ -666,11 +1100,12 @@ impl<'a> Parser<'a> {
                             callee: Box::new(lhs.clone()),
                         }),
                         lhs.span.to(self.previous().span),
-                    )
+                    );
+                    continue;
                 }
+
                 TokenKind::Punctuation(Punct::Dot) => {
                     self.advance();
-
                     let field = self.parse_ident()?;
                     lhs = AstNode::new(
                         Expr::FieldAccess(FieldAccessExpr {
@@ -678,12 +1113,13 @@ impl<'a> Parser<'a> {
                             field,
                         }),
                         lhs.span.to(self.previous().span),
-                    )
+                    );
+                    continue;
                 }
+
                 TokenKind::OpeningDelimiter(Delimiter::Bracket) => {
                     self.advance();
-                    let expr = self.parse_expression()?;
-
+                    let index_expr = self.parse_expression()?;
                     if !self.consume(&[TokenKind::ClosingDelimiter(Delimiter::Bracket)]) {
                         self.emit(ParserError::UnexpectedToken {
                             src: self.session.get_named_source(),
@@ -696,11 +1132,35 @@ impl<'a> Parser<'a> {
                     lhs = AstNode::new(
                         Expr::Index(IndexExpr {
                             target: Box::new(lhs.clone()),
-                            index: Box::new(expr),
+                            index: Box::new(index_expr),
                         }),
                         lhs.span.to(self.previous().span),
-                    )
+                    );
+                    continue;
                 }
+
+                TokenKind::Keyword(Kw::As) => {
+                    self.advance();
+                    let ty = self.parse_type()?;
+                    lhs = AstNode::new(
+                        Expr::Cast(CastExpr {
+                            expr: Box::new(lhs.clone()),
+                            ty,
+                        }),
+                        lhs.span.to(self.previous().span),
+                    );
+                    continue;
+                }
+
+                _ if self.current().kind.is_infix_op() => {
+                    let op_token = self.current().clone();
+                    self.advance();
+
+                    let rhs = self.parse_expr_with_precedence(right_bp)?;
+                    lhs = self.make_infix_expr(lhs, op_token, rhs)?;
+                    continue;
+                }
+
                 _ => break,
             }
         }
@@ -708,17 +1168,102 @@ impl<'a> Parser<'a> {
         Ok(lhs)
     }
 
+    fn current_precedence(&self) -> (u8, u8) {
+        match &self.current().kind {
+            TokenKind::OpeningDelimiter(Delimiter::Paren)
+            | TokenKind::OpeningDelimiter(Delimiter::Bracket)
+            | TokenKind::Punctuation(Punct::Dot) => (100, 101),
+
+            TokenKind::Keyword(Kw::As) => (12, 13),
+
+            TokenKind::Punctuation(Punct::Star)
+            | TokenKind::Punctuation(Punct::Slash)
+            | TokenKind::Punctuation(Punct::Percent) => (11, 12),
+
+            TokenKind::Punctuation(Punct::Plus) | TokenKind::Punctuation(Punct::Minus) => (10, 11),
+
+            TokenKind::Punctuation(Punct::Less)
+            | TokenKind::Punctuation(Punct::LessEq)
+            | TokenKind::Punctuation(Punct::Greater)
+            | TokenKind::Punctuation(Punct::GreaterEq) => (5, 6),
+
+            TokenKind::Punctuation(Punct::EqEq) | TokenKind::Punctuation(Punct::NotEq) => (4, 5),
+
+            TokenKind::Punctuation(Punct::And) => (3, 4),
+            TokenKind::Punctuation(Punct::Or) => (2, 3),
+
+            TokenKind::Punctuation(Punct::Eq)
+            | TokenKind::Punctuation(Punct::PlusEq)
+            | TokenKind::Punctuation(Punct::MinusEq)
+            | TokenKind::Punctuation(Punct::StarEq)
+            | TokenKind::Punctuation(Punct::SlashEq)
+            | TokenKind::Punctuation(Punct::PercentEq) => (1, 0),
+
+            _ => (0, 0),
+        }
+    }
+
+    fn make_infix_expr(
+        &mut self,
+        lhs: AstNode<Expr>,
+        op: Token,
+        rhs: AstNode<Expr>,
+    ) -> PResult<AstNode<Expr>> {
+        use Punct::*;
+        use TokenKind::*;
+
+        let span = lhs.span.to(rhs.span);
+
+        match op.kind {
+            Punctuation(Eq) => Ok(AstNode::new(
+                Expr::Assign(AssignExpr {
+                    target: Box::new(lhs),
+                    value: Box::new(rhs),
+                }),
+                span,
+            )),
+            Punctuation(Plus)
+            | Punctuation(Minus)
+            | Punctuation(Star)
+            | Punctuation(Slash)
+            | Punctuation(Percent)
+            | Punctuation(And)
+            | Punctuation(Or)
+            | Punctuation(EqEq)
+            | Punctuation(Less)
+            | Punctuation(LessEq)
+            | Punctuation(Greater)
+            | Punctuation(GreaterEq)
+            | Punctuation(NotEq) => Ok(AstNode::new(
+                Expr::Binary(BinaryExpr {
+                    operator: AstNode::new(BinOp::try_from(&op).unwrap(), op.span),
+                    left: Box::new(lhs),
+                    right: Box::new(rhs),
+                }),
+                span,
+            )),
+            Punctuation(PlusEq)
+            | Punctuation(MinusEq)
+            | Punctuation(StarEq)
+            | Punctuation(SlashEq)
+            | Punctuation(PercentEq) => Ok(AstNode::new(
+                Expr::AssignOp(AssignOpExpr {
+                    target: Box::new(lhs),
+                    op: AstNode::new(AssignOp::try_from(&op).unwrap(), op.span),
+                    value: Box::new(rhs),
+                }),
+                span,
+            )),
+
+            _ => Err(todo!()),
+        }
+    }
+
     fn parse_prefix(&mut self) -> PResult<AstNode<Expr>> {
         let lo = self.current().span;
 
-        let op = match self.current().kind {
-            TokenKind::Punctuation(Punct::Bang) => UnOp::Not,
-            TokenKind::Punctuation(Punct::Minus) => UnOp::Neg,
-            TokenKind::Punctuation(Punct::Star) => UnOp::Deref,
-            TokenKind::Punctuation(Punct::Ampersand) => UnOp::AddrOf,
-            _ => {
-                return self.parse_atom();
-            }
+        let Ok(op) = UnOp::try_from(self.current()) else {
+            return self.parse_atom();
         };
 
         let op = AstNode::new(op, self.current().span);
@@ -739,15 +1284,15 @@ impl<'a> Parser<'a> {
         let lo = self.current().span;
 
         let atom = match &self.current().kind {
-            TokenKind::Keyword(Keyword::True) => {
+            TokenKind::Keyword(Kw::True) => {
                 self.advance();
                 Expr::Literal(LiteralExpr::Bool(true))
             }
-            TokenKind::Keyword(Keyword::False) => {
+            TokenKind::Keyword(Kw::False) => {
                 self.advance();
                 Expr::Literal(LiteralExpr::Bool(false))
             }
-            TokenKind::Keyword(Keyword::Unit) => {
+            TokenKind::Keyword(Kw::Unit) => {
                 self.advance();
                 Expr::Literal(LiteralExpr::Unit)
             }
@@ -763,7 +1308,11 @@ impl<'a> Parser<'a> {
             }
             TokenKind::Ident(_) => {
                 let path = self.parse_path()?;
-                Expr::Path(PathExpr { path })
+                if self.check(&[TokenKind::OpeningDelimiter(Delimiter::Brace)]) {
+                    Expr::Struct(self.parse_struct_expr(path)?.node)
+                } else {
+                    Expr::Path(PathExpr { path })
+                }
             }
             TokenKind::OpeningDelimiter(Delimiter::Bracket) => {
                 let elems = self.parse_separated_delimited(
@@ -791,21 +1340,49 @@ impl<'a> Parser<'a> {
                 let block = self.parse_block()?;
                 Expr::Block(block.node)
             }
-            TokenKind::Keyword(Keyword::If) => {
+            TokenKind::Keyword(Kw::If) => {
                 let if_expr = self.parse_if_expr()?;
                 Expr::If(if_expr.node)
             }
-            TokenKind::Keyword(Keyword::While) => {
+            TokenKind::Keyword(Kw::While) => {
                 let while_expr = self.parse_while_expr()?;
                 Expr::While(while_expr.node)
             }
-            TokenKind::Keyword(Keyword::Break) => {
+            TokenKind::Keyword(Kw::Loop) => {
+                let loop_expr = self.parse_loop_expr()?;
+                Expr::Loop(loop_expr.node)
+            }
+            TokenKind::Keyword(Kw::For) => {
+                let for_expr = self.parse_for_expr()?;
+                Expr::For(for_expr.node)
+            }
+            TokenKind::Keyword(Kw::Match) => {
+                let match_expr = self.parse_match_expr()?;
+                Expr::Match(match_expr.node)
+            }
+            TokenKind::Keyword(Kw::Break) => {
                 let break_expr = self.parse_break_expr()?;
                 Expr::Break(break_expr.node)
             }
-
+            TokenKind::Keyword(Kw::Continue) => {
+                self.advance();
+                Expr::Continue
+            }
+            TokenKind::Keyword(Kw::Let) => {
+                let let_expr = self.parse_let_expr()?;
+                Expr::Let(let_expr.node)
+            }
+            TokenKind::Keyword(Kw::Return) => {
+                self.advance();
+                let expr = if self.current().can_begin_expr() {
+                    Some(Box::new(self.parse_expression()?))
+                } else {
+                    None
+                };
+                Expr::Return(ReturnExpr { value: expr })
+            }
             _ => {
-                panic!()
+                panic!("{}", self.current().kind)
             }
         };
 
@@ -819,7 +1396,7 @@ impl<'a> Parser<'a> {
         let condition = self.parse_expression()?;
         let then_branch = self.parse_block()?;
 
-        let else_branch = if self.consume(&[TokenKind::Keyword(Keyword::Else)]) {
+        let else_branch = if self.consume(&[TokenKind::Keyword(Kw::Else)]) {
             Some(Box::new(self.parse_block()?))
         } else {
             None
@@ -851,6 +1428,78 @@ impl<'a> Parser<'a> {
         ))
     }
 
+    fn parse_loop_expr(&mut self) -> PResult<AstNode<LoopExpr>> {
+        let lo = self.current().span;
+        self.advance();
+
+        let body = self.parse_block()?;
+
+        Ok(AstNode::new(
+            LoopExpr {
+                body: Box::new(body),
+            },
+            lo.to(self.previous().span),
+        ))
+    }
+
+    fn parse_for_expr(&mut self) -> PResult<AstNode<ForExpr>> {
+        let lo = self.current().span;
+        self.advance();
+
+        let pattern = self.parse_pattern()?;
+
+        self.consume(&[TokenKind::Keyword(Kw::In)]);
+
+        let iterator = self.parse_expression()?;
+        let body = self.parse_block()?;
+
+        Ok(AstNode::new(
+            ForExpr {
+                pattern,
+                iterator: Box::new(iterator),
+                body: Box::new(body),
+            },
+            lo.to(self.previous().span),
+        ))
+    }
+
+    fn parse_match_expr(&mut self) -> PResult<AstNode<MatchExpr>> {
+        let lo = self.current().span;
+        self.advance();
+
+        let expr = self.parse_expression()?;
+
+        let arms = self.parse_separated_delimited(
+            TokenKind::OpeningDelimiter(Delimiter::Brace),
+            TokenKind::ClosingDelimiter(Delimiter::Brace),
+            TokenKind::Punctuation(Punct::Comma),
+            |p| p.parse_match_arm(),
+        );
+        Ok(AstNode::new(
+            MatchExpr {
+                value: Box::new(expr),
+                arms,
+            },
+            lo.to(self.previous().span),
+        ))
+    }
+
+    fn parse_match_arm(&mut self) -> PResult<AstNode<MatchArm>> {
+        let lo = self.current().span;
+        let pattern = self.parse_pattern()?;
+
+        self.consume(&[TokenKind::Punctuation(Punct::FatArrow)]);
+        let expr = self.parse_expression()?;
+
+        Ok(AstNode::new(
+            MatchArm {
+                pattern,
+                body: Box::new(expr),
+            },
+            lo.to(self.previous().span),
+        ))
+    }
+
     fn parse_break_expr(&mut self) -> PResult<AstNode<BreakExpr>> {
         let lo = self.current().span;
         self.advance();
@@ -863,6 +1512,56 @@ impl<'a> Parser<'a> {
 
         Ok(AstNode::new(
             BreakExpr { expr },
+            lo.to(self.previous().span),
+        ))
+    }
+
+    fn parse_let_expr(&mut self) -> PResult<AstNode<LetExpr>> {
+        let lo = self.current().span;
+        self.advance();
+
+        let pattern = self.parse_pattern()?;
+        self.consume(&[TokenKind::Punctuation(Punct::Eq)]);
+
+        let expr = self.parse_expression()?;
+
+        Ok(AstNode::new(
+            LetExpr {
+                pattern,
+                value: Box::new(expr),
+            },
+            lo.to(self.previous().span),
+        ))
+    }
+
+    fn parse_struct_expr(&mut self, path: AstNode<Path>) -> PResult<AstNode<StructExpr>> {
+        let lo = path.span;
+
+        let fields = self.parse_separated_delimited(
+            TokenKind::OpeningDelimiter(Delimiter::Brace),
+            TokenKind::ClosingDelimiter(Delimiter::Brace),
+            TokenKind::Punctuation(Punct::Comma),
+            |p| p.parse_struct_expr_field(),
+        );
+
+        Ok(AstNode::new(
+            StructExpr { name: path, fields },
+            lo.to(self.previous().span),
+        ))
+    }
+
+    fn parse_struct_expr_field(&mut self) -> PResult<AstNode<StructExprField>> {
+        let lo = self.current().span;
+
+        let ident = self.parse_ident()?;
+        self.consume(&[TokenKind::Punctuation(Punct::Colon)]);
+        let expr = self.parse_expression()?;
+
+        Ok(AstNode::new(
+            StructExprField {
+                ident,
+                expr: Box::new(expr),
+            },
             lo.to(self.previous().span),
         ))
     }
