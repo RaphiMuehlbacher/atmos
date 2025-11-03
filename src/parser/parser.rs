@@ -480,8 +480,8 @@ impl<'a> Parser<'a> {
         let lo = self.current().span;
         self.advance();
 
-        let ident = self.parse_ident()?;
         let generics = self.parse_generic_params()?;
+        let self_ty = self.parse_type()?;
 
         let for_trait = if self.consume(&[TokenKind::Keyword(Kw::For)]) {
             let path = self.parse_path()?;
@@ -494,8 +494,8 @@ impl<'a> Parser<'a> {
 
         Ok(AstNode::new(
             Item::Impl(ImplDecl {
-                ident,
                 generics,
+                self_ty,
                 for_trait,
                 items,
             }),

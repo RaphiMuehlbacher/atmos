@@ -238,8 +238,8 @@ pub struct TraitDecl {
 
 #[derive(Debug, Clone)]
 pub struct ImplDecl {
-    pub ident: AstNode<Ident>,
     pub generics: Vec<AstNode<GenericParam>>,
+    pub self_ty: AstNode<Ty>,
     pub for_trait: Option<AstNode<Path>>,
     pub items: Vec<AstNode<AssociatedItem>>,
 }
