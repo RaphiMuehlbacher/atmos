@@ -1,1 +1,5 @@
-impl<T> SomeTrait for AnotherTrait<T> {}
+use parser::Parser;
+
+enum Test {
+    A(i32, Fn(i32) -> i32),
+}

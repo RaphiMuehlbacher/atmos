@@ -12,10 +12,6 @@ fn main() {
     let mut lexer = Lexer::new(&session);
     let tokens = lexer.tokenize();
 
-    // for token in &tokens {
-    //     println!("{token}");
-    // }
-
     let mut parser = Parser::new(&session, tokens);
     let ast = parser.parse_crate();
 
