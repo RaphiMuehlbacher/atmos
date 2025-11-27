@@ -3,13 +3,12 @@ use crate::extension::SourceSpanExt;
 use crate::lexer::token_kind::{Delimiter, Kw, Literal, Punct};
 use crate::lexer::{Token, TokenKind};
 use crate::parser::ast::{
-    ArrayExpr, AssignExpr, AssignOp, AssignOpExpr, AssociatedItem, AstNode, BinOp, BinaryExpr,
-    BlockExpr, BreakExpr, CallExpr, CastExpr, ConstDecl, Crate, EnumDecl, EnumVariant, Expr,
-    ExternFnDecl, FieldAccessExpr, FnDecl, FnSig, ForExpr, GenericArg, GenericParam,
-    GenericParamKind, Ident, IfExpr, ImplDecl, IndexExpr, Item, LetExpr, LetStmt, LiteralExpr,
-    LoopExpr, MatchArm, MatchExpr, Param, Path, PathExpr, PathSegment, Pattern, PatternStructField,
-    ReturnExpr, Stmt, StructDecl, StructExpr, StructExprField, StructFieldDef, TraitDecl,
-    TupleExpr, Ty, TyAliasDecl, UnOp, UnaryExpr, UseItem, VariantData, WhileExpr,
+    ArrayExpr, AssignExpr, AssignOp, AssignOpExpr, AssociatedItem, AstNode, BinOp, BinaryExpr, BlockExpr, BreakExpr,
+    CallExpr, CastExpr, ConstDecl, Crate, EnumDecl, EnumVariant, Expr, ExternFnDecl, FieldAccessExpr, FnDecl, FnSig,
+    ForExpr, GenericArg, GenericParam, GenericParamKind, Ident, IfExpr, ImplDecl, IndexExpr, Item, LetExpr, LetStmt,
+    LiteralExpr, LoopExpr, MatchArm, MatchExpr, Param, Path, PathExpr, PathSegment, Pattern, PatternStructField,
+    ReturnExpr, Stmt, StructDecl, StructExpr, StructExprField, StructFieldDef, TraitDecl, TupleExpr, Ty, TyAliasDecl,
+    UnOp, UnaryExpr, UseItem, VariantData, WhileExpr,
 };
 use crate::parser::ParserError;
 use crate::Session;
@@ -89,12 +88,7 @@ impl<'a> Parser<'a> {
             .0
     }
 
-    fn parse_delimited<T, F>(
-        &mut self,
-        open: TokenKind,
-        close: TokenKind,
-        mut parse_element: F,
-    ) -> Vec<T>
+    fn parse_delimited<T, F>(&mut self, open: TokenKind, close: TokenKind, mut parse_element: F) -> Vec<T>
     where
         F: FnMut(&mut Self) -> PResult<T>,
     {
@@ -299,8 +293,7 @@ impl<'a> Parser<'a> {
     fn token_ends_stmt(&self) -> bool {
         matches!(
             self.current().kind,
-            TokenKind::Punctuation(Punct::Semicolon)
-                | TokenKind::ClosingDelimiter(Delimiter::Brace)
+            TokenKind::Punctuation(Punct::Semicolon) | TokenKind::ClosingDelimiter(Delimiter::Brace)
         )
     }
 }
@@ -367,11 +360,7 @@ impl<'a> Parser<'a> {
         };
 
         Ok(AstNode::new(
-            TyAliasDecl {
-                ident,
-                generics,
-                ty,
-            },
+            TyAliasDecl { ident, generics, ty },
             lo.to(self.previous().span),
         ))
     }
@@ -426,10 +415,7 @@ impl<'a> Parser<'a> {
         let path = self.parse_path()?;
         self.consume(&[TokenKind::Punctuation(Punct::Semicolon)]);
 
-        Ok(AstNode::new(
-            Item::Use(UseItem { path }),
-            lo.to(self.previous().span),
-        ))
+        Ok(AstNode::new(Item::Use(UseItem { path }), lo.to(self.previous().span)))
     }
 
     fn parse_type_alias_item(&mut self) -> PResult<AstNode<Item>> {
@@ -512,11 +498,7 @@ impl<'a> Parser<'a> {
         let items = self.parse_associated_items()?;
 
         Ok(AstNode::new(
-            Item::Trait(TraitDecl {
-                ident,
-                generics,
-                items,
-            }),
+            Item::Trait(TraitDecl { ident, generics, items }),
             lo.to(self.previous().span),
         ))
     }
@@ -552,10 +534,7 @@ impl<'a> Parser<'a> {
         let variant = self.parse_variant_data()?;
 
         Ok(AstNode::new(
-            EnumVariant {
-                ident,
-                data: variant,
-            },
+            EnumVariant { ident, data: variant },
             lo.to(self.previous().span),
         ))
     }
@@ -642,10 +621,7 @@ impl<'a> Parser<'a> {
         let sig = self.parse_fn_sig()?;
         let body = self.parse_block()?;
 
-        Ok(AstNode::new(
-            FnDecl { sig, body },
-            lo.to(self.previous().span),
-        ))
+        Ok(AstNode::new(FnDecl { sig, body }, lo.to(self.previous().span)))
     }
 
     // starts at the `fn` keyword, ends before the block
@@ -761,7 +737,7 @@ impl<'a> Parser<'a> {
                     );
                     Pattern::TupleStruct(path, patterns)
                 } else {
-                    Pattern::Ident(path)
+                    Pattern::Path(path)
                 }
             }
             TokenKind::OpeningDelimiter(Delimiter::Paren) => {
@@ -834,11 +810,7 @@ impl<'a> Parser<'a> {
         };
 
         Ok(AstNode::new(
-            GenericParam {
-                ident,
-                bounds,
-                kind,
-            },
+            GenericParam { ident, bounds, kind },
             lo.to(self.previous().span),
         ))
     }
@@ -872,10 +844,7 @@ impl<'a> Parser<'a> {
         let ident = self.parse_ident()?;
         let args = self.parse_generic_args()?;
 
-        Ok(AstNode::new(
-            PathSegment { ident, args },
-            lo.to(self.previous().span),
-        ))
+        Ok(AstNode::new(PathSegment { ident, args }, lo.to(self.previous().span)))
     }
     fn parse_generic_args(&mut self) -> PResult<Vec<AstNode<GenericArg>>> {
         if !self.check(&[TokenKind::Punctuation(Punct::Less)]) {
@@ -976,10 +945,7 @@ impl<'a> Parser<'a> {
         match &token.kind {
             TokenKind::Ident(ident) => {
                 self.advance();
-                Ok(AstNode::new(
-                    Ident::new(ident.into()),
-                    lo.to(self.previous().span),
-                ))
+                Ok(AstNode::new(Ident::new(ident.into()), lo.to(self.previous().span)))
             }
             found => {
                 self.emit(ParserError::ExpectedIdentifier {
@@ -999,17 +965,11 @@ impl<'a> Parser<'a> {
 
         let mut stmts = vec![];
 
-        while !self.consume(&[
-            TokenKind::ClosingDelimiter(Delimiter::Brace),
-            TokenKind::EOF,
-        ]) {
+        while !self.consume(&[TokenKind::ClosingDelimiter(Delimiter::Brace), TokenKind::EOF]) {
             let stmt = self.parse_statement()?;
             stmts.push(stmt);
         }
-        Ok(AstNode::new(
-            BlockExpr { stmts },
-            lo.to(self.previous().span),
-        ))
+        Ok(AstNode::new(BlockExpr { stmts }, lo.to(self.previous().span)))
     }
 
     fn parse_statement(&mut self) -> PResult<AstNode<Stmt>> {
@@ -1203,12 +1163,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn make_infix_expr(
-        &mut self,
-        lhs: AstNode<Expr>,
-        op: Token,
-        rhs: AstNode<Expr>,
-    ) -> PResult<AstNode<Expr>> {
+    fn make_infix_expr(&mut self, lhs: AstNode<Expr>, op: Token, rhs: AstNode<Expr>) -> PResult<AstNode<Expr>> {
         use Punct::*;
         use TokenKind::*;
 
@@ -1435,9 +1390,7 @@ impl<'a> Parser<'a> {
         let body = self.parse_block()?;
 
         Ok(AstNode::new(
-            LoopExpr {
-                body: Box::new(body),
-            },
+            LoopExpr { body: Box::new(body) },
             lo.to(self.previous().span),
         ))
     }
@@ -1510,10 +1463,7 @@ impl<'a> Parser<'a> {
             None
         };
 
-        Ok(AstNode::new(
-            BreakExpr { expr },
-            lo.to(self.previous().span),
-        ))
+        Ok(AstNode::new(BreakExpr { expr }, lo.to(self.previous().span)))
     }
 
     fn parse_let_expr(&mut self) -> PResult<AstNode<LetExpr>> {

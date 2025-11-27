@@ -1,7 +1,8 @@
-mod defs;
+pub mod defs;
 pub mod error;
-mod resolutions;
+pub mod resolutions;
 pub mod resolver;
-mod scopes;
+pub mod ribs;
 
 pub use error::ResolverError;
+pub use resolver::Resolver;

@@ -1,10 +1,11 @@
-use crate::parser::ast::Ident;
+use crate::parser::ast::{AstNode, Ident};
+use miette::SourceSpan;
 use std::collections::HashMap;
 
 #[derive(Copy, Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub struct DefId(usize);
 
-#[derive(Default)]
+#[derive(Clone, PartialEq, Debug, Default)]
 pub struct DefinitionMap {
     definitions: HashMap<DefId, Definition>,
     next_def_id: DefId,
@@ -17,10 +18,9 @@ impl DefinitionMap {
         current
     }
 
-    pub fn insert(&mut self, ident: Ident, kind: DefKind) -> DefId {
+    pub fn insert(&mut self, ident: AstNode<Ident>, kind: DefKind) -> DefId {
         let def_id = self.increment_def_id();
-        self.definitions
-            .insert(def_id, Definition::new(def_id, ident, kind));
+        self.definitions.insert(def_id, Definition::new(def_id, ident, kind));
         def_id
     }
 
@@ -29,22 +29,26 @@ impl DefinitionMap {
     }
 }
 
+#[derive(Clone, PartialEq, Debug)]
 pub struct Definition {
     def_id: DefId,
     ident: Ident,
+    pub span: SourceSpan,
     kind: DefKind,
 }
 
 impl Definition {
-    pub fn new(def_id: DefId, ident: Ident, kind: DefKind) -> Self {
+    pub fn new(def_id: DefId, ident: AstNode<Ident>, kind: DefKind) -> Self {
         Self {
             def_id,
-            ident,
+            ident: ident.node,
+            span: ident.span,
             kind,
         }
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub enum DefKind {
     Struct,
     StructField,

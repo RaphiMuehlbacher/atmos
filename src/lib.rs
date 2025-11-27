@@ -7,4 +7,5 @@ pub mod session;
 
 pub use lexer::Lexer;
 pub use parser::Parser;
+pub use resolver::Resolver;
 pub use session::Session;

@@ -1,5 +1,5 @@
-use parser::Parser;
-
-enum Test {
-    A(i32, Fn(i32) -> i32),
+fn test() {
+    let a = Myname {name: "hi"};
+    let a = 3;
+    fn a() {}
 }

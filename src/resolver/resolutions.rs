@@ -2,7 +2,7 @@ use crate::parser::AstId;
 use crate::resolver::defs::DefId;
 use std::collections::HashMap;
 
-#[derive(Default)]
+#[derive(Debug, Default, Clone)]
 pub struct ResolutionMap {
     map: HashMap<AstId, DefId>,
 }

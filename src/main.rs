@@ -1,4 +1,4 @@
-use atmos::{Lexer, Parser, Session};
+use atmos::{Lexer, Parser, Resolver, Session};
 use miette::{GraphicalReportHandler, NamedSource};
 use std::fs;
 
@@ -15,9 +15,8 @@ fn main() {
     let mut parser = Parser::new(&session, tokens);
     let ast = parser.parse_crate();
 
-    if session.error_handler.borrow().error_count() == 0 {
-        dbg!(&ast);
-    }
+    let mut resolver = Resolver::new(&session, &ast);
+    let (resolutions, definitions) = resolver.resolve();
 
     session.emit_all();
 }

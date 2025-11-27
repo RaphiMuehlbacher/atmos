@@ -36,7 +36,7 @@ impl<T> AstNode<T> {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Ident {
-    name: String,
+    pub name: String,
 }
 
 impl Ident {
@@ -92,7 +92,7 @@ pub enum Ty {
 pub enum Pattern {
     Wildcard,
     Or(Vec<AstNode<Pattern>>),
-    Ident(AstNode<Path>),
+    Path(AstNode<Path>),
     Struct(AstNode<Path>, Vec<AstNode<PatternStructField>>),
     TupleStruct(AstNode<Path>, Vec<AstNode<Pattern>>),
     Tuple(Vec<AstNode<Pattern>>),
@@ -208,12 +208,8 @@ pub struct EnumVariant {
 #[derive(Debug, Clone)]
 pub enum VariantData {
     Unit,
-    Struct {
-        fields: Vec<AstNode<StructFieldDef>>,
-    },
-    Tuple {
-        types: Vec<AstNode<Ty>>,
-    },
+    Struct { fields: Vec<AstNode<StructFieldDef>> },
+    Tuple { types: Vec<AstNode<Ty>> },
 }
 
 #[derive(Debug, Clone)]
