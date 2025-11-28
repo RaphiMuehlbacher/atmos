@@ -1,17 +1,14 @@
 use crate::error::CompilerError;
+use crate::extension::SourceSpanExt;
 use crate::parser::ast::{
-    AstNode, BlockExpr, Crate, Expr, FnSig, Ident, Item, LetStmt, MatchArm, Path, PathSegment, Pattern, Stmt,
+    AstNode, BlockExpr, Crate, Expr, FnSig, GenericParam, GenericParamKind, Ident, Item, LetStmt, MatchArm, Path,
+    PathSegment, Pattern, Stmt, Ty, VariantData,
 };
 use crate::resolver::defs::{DefId, DefKind, DefinitionMap};
 use crate::resolver::resolutions::ResolutionMap;
 use crate::resolver::ribs::{Rib, RibKind};
 use crate::resolver::ResolverError;
 use crate::Session;
-
-struct ResolverOutput {
-    resolutions: ResolutionMap,
-    definitions: DefinitionMap,
-}
 
 pub struct Resolver<'ast> {
     session: &'ast Session,
@@ -23,13 +20,29 @@ pub struct Resolver<'ast> {
 
 impl<'ast> Resolver<'ast> {
     pub fn new(session: &'ast Session, ast_program: &'ast Crate) -> Self {
-        Resolver {
+        let mut resolver = Resolver {
             session,
             ast_program,
             ribs: vec![Rib::item()],
             resolutions: ResolutionMap::default(),
             definitions: DefinitionMap::default(),
+        };
+        resolver.insert_builtins();
+        resolver
+    }
+
+    fn insert_builtins(&mut self) {
+        let builtins = ["i32", "u32", "f64", "bool", "str"];
+
+        for builtin_name in builtins {
+            self.insert_builtin_type(builtin_name);
         }
+    }
+
+    fn insert_builtin_type(&mut self, name: &str) {
+        let ident = AstNode::new(Ident::new(name.to_string()), miette::SourceSpan::err_span());
+        let def_id = self.definitions.insert(ident, DefKind::BuiltinType);
+        self.innermost_rib().insert(name.to_string(), def_id);
     }
 
     pub fn resolve(&mut self) -> (ResolutionMap, DefinitionMap) {
@@ -50,11 +63,23 @@ impl<'ast> Resolver<'ast> {
     fn resolve_item(&mut self, item: &AstNode<Item>) {
         match &item.node {
             Item::Fn(fn_decl) => {
-                self.declare_fn_params(&fn_decl.sig);
+                self.resolve_fn_sig(&fn_decl.sig);
                 self.resolve_block(&fn_decl.body.node);
             }
-            Item::Struct(_) => {}
-            Item::Enum(_) => {}
+            Item::Struct(struct_decl) => {
+                for type_param in &struct_decl.generics {
+                    self.resolve_type_param(type_param);
+                }
+                self.resolve_variant(&struct_decl.data);
+            }
+            Item::Enum(enum_decl) => {
+                for type_param in &enum_decl.generics {
+                    self.resolve_type_param(type_param);
+                }
+                for variant in &enum_decl.variants {
+                    self.resolve_variant(&variant.node.data);
+                }
+            }
             Item::Trait(_) => {}
             Item::Impl(_) => {}
             Item::ExternFn(_) => {}
@@ -79,7 +104,7 @@ impl<'ast> Resolver<'ast> {
             Item::Trait(trait_decl) => {
                 self.define_ident(&trait_decl.ident, DefKind::Trait);
             }
-            Item::Impl(impl_decl) => todo!(),
+            Item::Impl(impl_decl) => {}
             Item::ExternFn(extern_fn_decl) => {
                 self.define_ident(&extern_fn_decl.sig.node.ident, DefKind::Function);
             }
@@ -95,15 +120,71 @@ impl<'ast> Resolver<'ast> {
         }
     }
 
-    fn declare_fn_params(&mut self, sig: &AstNode<FnSig>) {
+    fn resolve_fn_sig(&mut self, sig: &AstNode<FnSig>) {
+        for type_param in &sig.node.generics {
+            self.resolve_type_param(type_param);
+        }
+
         for param in &sig.node.params {
             self.resolve_pattern_with_rib(&param.node.pattern, DefKind::Parameter, RibKind::Local);
+            self.resolve_type(&param.node.type_annotation);
         }
     }
 
     fn resolve_block(&mut self, block: &BlockExpr) {
         self.declare_block(block);
         self.resolve_block_contents(block);
+    }
+
+    fn resolve_type(&mut self, ty: &AstNode<Ty>) {
+        match &ty.node {
+            Ty::Path(path) => self.resolve_path(path),
+            Ty::Array(ty, expr) => {
+                self.resolve_type(ty);
+                self.resolve_expr(expr);
+            }
+            Ty::Ptr(ty) => self.resolve_type(ty),
+            Ty::Fn(param_types, return_ty) => {
+                for param in param_types {
+                    self.resolve_type(param);
+                }
+                if let Some(return_ty) = return_ty.as_ref() {
+                    self.resolve_type(return_ty);
+                }
+            }
+            Ty::Tuple(types) => {
+                for ty in types {
+                    self.resolve_type(ty);
+                }
+            }
+            Ty::Paren(ty) => self.resolve_type(ty),
+        }
+    }
+
+    fn resolve_variant(&mut self, variant: &AstNode<VariantData>) {
+        match &variant.node {
+            VariantData::Unit => {}
+            VariantData::Struct { fields } => {
+                for field in fields {
+                    self.resolve_type(&field.node.type_annotation);
+                }
+            }
+            VariantData::Tuple { types } => {
+                for ty in types {
+                    self.resolve_type(ty)
+                }
+            }
+        }
+    }
+    fn resolve_type_param(&mut self, type_param: &AstNode<GenericParam>) {
+        self.define_ident(&type_param.node.ident, DefKind::TypeParam);
+        if let GenericParamKind::Const(ty) = &type_param.node.kind {
+            self.resolve_type(ty);
+        }
+
+        for bound in &type_param.node.bounds {
+            self.resolve_path(&bound);
+        }
     }
 
     fn declare_block(&mut self, block: &BlockExpr) {

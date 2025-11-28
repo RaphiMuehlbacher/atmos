@@ -62,4 +62,5 @@ pub enum DefKind {
     Parameter,
     TypeParam,
     TypeAlias,
+    BuiltinType,
 }

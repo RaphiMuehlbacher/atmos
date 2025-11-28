@@ -1,5 +1,3 @@
-fn test() {
-    let a = Myname {name: "hi"};
-    let a = 3;
-    fn a() {}
+struct Person<T> {
+    name: T,
 }
