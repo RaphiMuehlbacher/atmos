@@ -4,18 +4,27 @@ use crate::parser::ast::{
     AstNode, BlockExpr, Crate, Expr, FnSig, GenericParam, GenericParamKind, Ident, Item, LetStmt, MatchArm, Path,
     PathSegment, Pattern, Stmt, Ty, VariantData,
 };
+use crate::parser::AstId;
+use crate::resolver::collect_defs::DefCollector;
 use crate::resolver::defs::{DefId, DefKind, DefinitionMap};
+use crate::resolver::modules::{Import, Module};
 use crate::resolver::resolutions::ResolutionMap;
 use crate::resolver::ribs::{Rib, RibKind};
+use crate::resolver::visitor::walk_crate;
 use crate::resolver::ResolverError;
 use crate::Session;
+use std::collections::HashMap;
 
 pub struct Resolver<'ast> {
     session: &'ast Session,
     ast_program: &'ast Crate,
+
     ribs: Vec<Rib>,
     resolutions: ResolutionMap,
     definitions: DefinitionMap,
+
+    modules: HashMap<AstId, Module<'ast>>,
+    unresolved_imports: Vec<Import<'ast>>,
 }
 
 impl<'ast> Resolver<'ast> {
@@ -26,6 +35,8 @@ impl<'ast> Resolver<'ast> {
             ribs: vec![Rib::item()],
             resolutions: ResolutionMap::default(),
             definitions: DefinitionMap::default(),
+            modules: HashMap::new(),
+            unresolved_imports: Vec::new(),
         };
         resolver.insert_builtins();
         resolver
@@ -45,19 +56,13 @@ impl<'ast> Resolver<'ast> {
         self.innermost_rib().insert(name.to_string(), def_id);
     }
 
-    pub fn resolve(&mut self) -> (ResolutionMap, DefinitionMap) {
-        for item in &self.ast_program.items {
-            self.declare_item(item);
-        }
+    pub fn resolve(&mut self) {
+        self.collect_definitions(self.ast_program);
+    }
 
-        for item in &self.ast_program.items {
-            self.resolve_item(item);
-        }
-
-        // dbg!(&self.ribs);
-        // dbg!(&self.resolutions);
-        // dbg!(&self.definitions);
-        (self.resolutions.clone(), self.definitions.clone())
+    fn collect_definitions(&mut self, krate: &Crate) {
+        let mut def_collector = DefCollector::new(self);
+        walk_crate(&mut def_collector, krate);
     }
 
     fn resolve_item(&mut self, item: &AstNode<Item>) {

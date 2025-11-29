@@ -16,7 +16,7 @@ fn main() {
     let ast = parser.parse_crate();
 
     let mut resolver = Resolver::new(&session, &ast);
-    let (resolutions, definitions) = resolver.resolve();
+    resolver.resolve();
 
     session.emit_all();
 }
