@@ -133,6 +133,7 @@ pub enum Item {
     Struct(StructDecl),
     Enum(EnumDecl),
     Trait(TraitDecl),
+    Mod(ModDecl),
     Impl(ImplDecl),
     ExternFn(ExternFnDecl),
     Const(ConstDecl),
@@ -230,6 +231,12 @@ pub struct TraitDecl {
     pub ident: AstNode<Ident>,
     pub generics: Vec<AstNode<GenericParam>>,
     pub items: Vec<AstNode<AssociatedItem>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ModDecl {
+    pub ident: AstNode<Ident>,
+    pub items: Vec<AstNode<Item>>,
 }
 
 #[derive(Debug, Clone)]

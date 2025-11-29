@@ -6,9 +6,9 @@ use crate::parser::ast::{
     ArrayExpr, AssignExpr, AssignOp, AssignOpExpr, AssociatedItem, AstNode, BinOp, BinaryExpr, BlockExpr, BreakExpr,
     CallExpr, CastExpr, ConstDecl, Crate, EnumDecl, EnumVariant, Expr, ExternFnDecl, FieldAccessExpr, FnDecl, FnSig,
     ForExpr, GenericArg, GenericParam, GenericParamKind, Ident, IfExpr, ImplDecl, IndexExpr, Item, LetExpr, LetStmt,
-    LiteralExpr, LoopExpr, MatchArm, MatchExpr, Param, Path, PathExpr, PathSegment, Pattern, PatternStructField,
-    ReturnExpr, Stmt, StructDecl, StructExpr, StructExprField, StructFieldDef, TraitDecl, TupleExpr, Ty, TyAliasDecl,
-    UnOp, UnaryExpr, UseItem, VariantData, WhileExpr,
+    LiteralExpr, LoopExpr, MatchArm, MatchExpr, ModDecl, Param, Path, PathExpr, PathSegment, Pattern,
+    PatternStructField, ReturnExpr, Stmt, StructDecl, StructExpr, StructExprField, StructFieldDef, TraitDecl,
+    TupleExpr, Ty, TyAliasDecl, UnOp, UnaryExpr, UseItem, VariantData, WhileExpr,
 };
 use crate::parser::ParserError;
 use crate::Session;
@@ -332,6 +332,7 @@ impl<'a> Parser<'a> {
             TokenKind::Keyword(Kw::Struct) => self.parse_struct_item(),
             TokenKind::Keyword(Kw::Enum) => self.parse_enum_item(),
             TokenKind::Keyword(Kw::Trait) => self.parse_trait_item(),
+            TokenKind::Keyword(Kw::Mod) => self.parse_mod_item(),
             TokenKind::Keyword(Kw::Impl) => self.parse_impl_item(),
             TokenKind::Keyword(Kw::Extern) => self.parse_extern_fn_item(),
             TokenKind::Keyword(Kw::Const) => self.parse_const_item(),
@@ -499,6 +500,23 @@ impl<'a> Parser<'a> {
 
         Ok(AstNode::new(
             Item::Trait(TraitDecl { ident, generics, items }),
+            lo.to(self.previous().span),
+        ))
+    }
+
+    fn parse_mod_item(&mut self) -> PResult<AstNode<Item>> {
+        let lo = self.current().span;
+        self.advance();
+
+        let ident = self.parse_ident()?;
+        let items = self.parse_delimited(
+            TokenKind::OpeningDelimiter(Delimiter::Brace),
+            TokenKind::ClosingDelimiter(Delimiter::Brace),
+            |p| p.parse_item(),
+        );
+
+        Ok(AstNode::new(
+            Item::Mod(ModDecl { ident, items }),
             lo.to(self.previous().span),
         ))
     }

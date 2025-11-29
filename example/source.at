@@ -1,3 +1,7 @@
 fn test() {
     fn moin() {}
 }
+
+mod foo {
+    struct A;
+}

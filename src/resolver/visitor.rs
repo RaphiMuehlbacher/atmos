@@ -1,7 +1,7 @@
 use crate::parser::ast::{
     AssociatedItem, BlockExpr, CallExpr, ConstDecl, Crate, EnumDecl, Expr, ExternFnDecl, FnDecl, FnSig, GenericArg,
-    GenericParam, Ident, ImplDecl, Item, LetStmt, MatchArm, MethodCallExpr, Param, Path, PathSegment, Pattern, Stmt,
-    StructDecl, StructExpr, StructExprField, TraitDecl, Ty, TyAliasDecl, VariantData,
+    GenericParam, Ident, ImplDecl, Item, LetStmt, MatchArm, MethodCallExpr, ModDecl, Param, Path, PathSegment, Pattern,
+    Stmt, StructDecl, StructExpr, StructExprField, TraitDecl, Ty, TyAliasDecl, VariantData,
 };
 
 macro_rules! visit_list {
@@ -127,6 +127,10 @@ pub fn walk_item(visitor: &mut impl Visitor, item: &Item) {
             visitor.visit_ident(&ident.node);
             visit_list!(visitor, visit_generic_param, generics);
             visit_list!(visitor, visit_assoc_item, items);
+        }
+        Item::Mod(ModDecl { ident, items }) => {
+            visitor.visit_ident(&ident.node);
+            visit_list!(visitor, visit_item, items);
         }
         Item::Impl(ImplDecl {
             generics,
@@ -273,7 +277,7 @@ pub fn walk_expr(visitor: &mut impl Visitor, expr: &Expr) {
         Expr::AddrOf(addr_of_expr) => visitor.visit_expr(&addr_of_expr.expr.node),
         Expr::Break(break_expr) => visit_opt!(visitor, visit_expr, &break_expr.expr),
         Expr::Continue => {}
-        Expr::Literal(literal_expr) => {}
+        Expr::Literal(_) => {}
         Expr::Binary(binary_expr) => {
             visitor.visit_expr(&binary_expr.left.node);
             visitor.visit_expr(&binary_expr.right.node);

@@ -1,3 +1,4 @@
+use crate::parser::ast::Item;
 use crate::resolver::visitor::Visitor;
 use crate::Resolver;
 
@@ -11,4 +12,6 @@ impl<'a, 'r> DefCollector<'a, 'r> {
     }
 }
 
-impl<'a, 'r> Visitor for DefCollector<'a, 'r> {}
+impl<'a, 'r> Visitor for DefCollector<'a, 'r> {
+    fn visit_item(&mut self, item: &Item) {}
+}

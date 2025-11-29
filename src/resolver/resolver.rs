@@ -86,6 +86,7 @@ impl<'ast> Resolver<'ast> {
                 }
             }
             Item::Trait(_) => {}
+            Item::Mod(_) => {}
             Item::Impl(_) => {}
             Item::ExternFn(_) => {}
             Item::Const(_) => {}
@@ -109,6 +110,7 @@ impl<'ast> Resolver<'ast> {
             Item::Trait(trait_decl) => {
                 self.define_ident(&trait_decl.ident, DefKind::Trait);
             }
+            Item::Mod(_) => {}
             Item::Impl(impl_decl) => {}
             Item::ExternFn(extern_fn_decl) => {
                 self.define_ident(&extern_fn_decl.sig.node.ident, DefKind::Function);

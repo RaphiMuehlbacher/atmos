@@ -77,6 +77,7 @@ pub enum Kw {
     Struct,   // 'struct'
     Enum,     // 'enum'
     Trait,    // 'trait'
+    Mod,      // 'mod'
     Match,    // 'match'
     Impl,     // 'impl'
     Pub,      // 'pub'
@@ -226,6 +227,7 @@ impl Display for Kw {
             Kw::Struct => "struct",
             Kw::Enum => "enum",
             Kw::Trait => "trait",
+            Kw::Mod => "mod",
             Kw::Match => "match",
             Kw::Impl => "impl",
             Kw::Pub => "pub",

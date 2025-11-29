@@ -10,10 +10,7 @@ pub struct Lexer<'sess> {
 
 impl<'sess> Lexer<'sess> {
     pub fn new(session: &'sess Session) -> Self {
-        Self {
-            session,
-            position: 0,
-        }
+        Self { session, position: 0 }
     }
 
     pub fn tokenize(&mut self) -> Vec<Token> {
@@ -174,10 +171,7 @@ impl<'sess> Lexer<'sess> {
             tokens.push(token);
         }
 
-        tokens.push(Token::new(
-            TokenKind::EOF,
-            SourceSpan::from((self.position - 2, 1)),
-        ));
+        tokens.push(Token::new(TokenKind::EOF, SourceSpan::from((self.position - 2, 1))));
         tokens
     }
 
@@ -224,12 +218,7 @@ impl<'sess> Lexer<'sess> {
         let mut value = String::new();
         let mut has_dot = false;
 
-        value.push(
-            self.session.get_source()[self.position - 1..]
-                .chars()
-                .next()
-                .unwrap(),
-        );
+        value.push(self.session.get_source()[self.position - 1..].chars().next().unwrap());
 
         while let Some(c) = self.peek() {
             match c {
@@ -286,12 +275,7 @@ impl<'sess> Lexer<'sess> {
 
     fn lex_identifier(&mut self) -> TokenKind {
         let mut value = String::new();
-        value.push(
-            self.session.get_source()[self.position - 1..]
-                .chars()
-                .next()
-                .unwrap(),
-        );
+        value.push(self.session.get_source()[self.position - 1..].chars().next().unwrap());
 
         while let Some(c) = self.peek() {
             if self.is_ident_continue(c) {
@@ -317,6 +301,7 @@ impl<'sess> Lexer<'sess> {
             "struct" => TokenKind::Keyword(Kw::Struct),
             "enum" => TokenKind::Keyword(Kw::Enum),
             "trait" => TokenKind::Keyword(Kw::Trait),
+            "mod" => TokenKind::Keyword(Kw::Mod),
             "match" => TokenKind::Keyword(Kw::Match),
             "impl" => TokenKind::Keyword(Kw::Impl),
             "pub" => TokenKind::Keyword(Kw::Pub),
@@ -367,9 +352,7 @@ impl<'sess> Lexer<'sess> {
     }
 
     fn peek_next(&self) -> Option<char> {
-        self.session.get_source()[self.position + 1..]
-            .chars()
-            .next()
+        self.session.get_source()[self.position + 1..].chars().next()
     }
 
     fn advance(&mut self) -> Option<char> {
