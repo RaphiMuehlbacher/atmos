@@ -1,1 +1,3 @@
-fn test<T>(a: T) -> T {}
+mod a {
+    fn test<T>(a: T) -> T {}
+}

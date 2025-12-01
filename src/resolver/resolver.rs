@@ -1,5 +1,4 @@
 use crate::error::CompilerError;
-use crate::extension::SourceSpanExt;
 use crate::parser::ast::{
     AstNode, BlockExpr, Crate, Expr, FnSig, GenericParam, GenericParamKind, Ident, Item, LetStmt, MatchArm, Path,
     PathSegment, Pattern, Stmt, Ty, VariantData,
@@ -7,7 +6,8 @@ use crate::parser::ast::{
 use crate::parser::AstId;
 use crate::resolver::collect_defs::DefCollector;
 use crate::resolver::defs::{DefId, DefKind, DefinitionMap};
-use crate::resolver::modules::{Import, Module};
+use crate::resolver::module_builder::{ModuleArena, ModuleBuilder};
+use crate::resolver::modules::{ImportId, ModuleId};
 use crate::resolver::ribs::{Rib, RibKind};
 use crate::resolver::visitor::walk_crate;
 use crate::resolver::ResolverError;
@@ -21,8 +21,9 @@ pub struct Resolver<'ast> {
     ribs: Vec<Rib>,
     pub defs: DefinitionMap,
 
-    modules: HashMap<AstId, Module<'ast>>,
-    unresolved_imports: Vec<Import<'ast>>,
+    pub module_arena: ModuleArena,
+    pub modules: HashMap<AstId, ModuleId>,
+    unresolved_imports: Vec<ImportId>,
 }
 
 impl<'ast> Resolver<'ast> {
@@ -32,6 +33,7 @@ impl<'ast> Resolver<'ast> {
             ast_program,
             ribs: vec![Rib::item()],
             defs: DefinitionMap::default(),
+            module_arena: ModuleArena::new(),
             modules: HashMap::new(),
             unresolved_imports: Vec::new(),
         };
@@ -48,19 +50,25 @@ impl<'ast> Resolver<'ast> {
     }
 
     fn insert_builtin_type(&mut self, name: &str) {
-        let ident = AstNode::new(Ident::new(name.to_string()), miette::SourceSpan::err_span());
-        let def_id = self.defs.insert_with_ident(&ident, DefKind::BuiltinType);
+        let ast_id = AstNode::err(Ident::err()).ast_id;
+        let def_id = self.defs.insert(ast_id, DefKind::BuiltinType);
         self.innermost_rib().insert(name.to_string(), def_id);
     }
 
     pub fn resolve(&mut self) {
         self.collect_definitions(self.ast_program);
+        self.build_modules(self.ast_program);
     }
 
     fn collect_definitions(&mut self, krate: &Crate) {
         let mut def_collector = DefCollector::new(self);
         walk_crate(&mut def_collector, krate);
-        dbg!(&self.defs);
+    }
+
+    fn build_modules(&mut self, krate: &Crate) {
+        let mut module_builder = ModuleBuilder::new(self, self.module_arena.root_id());
+        walk_crate(&mut module_builder, krate);
+        dbg!(&self.module_arena);
     }
 
     fn resolve_item(&mut self, item: &AstNode<Item>) {

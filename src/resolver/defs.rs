@@ -1,6 +1,5 @@
-use crate::parser::ast::{AstNode, Ident, Item};
+use crate::parser::ast::Item;
 use crate::parser::AstId;
-use miette::SourceSpan;
 use std::collections::HashMap;
 
 #[derive(Copy, Debug, Clone, PartialEq, Eq, Hash, Default)]
@@ -20,39 +19,31 @@ impl DefinitionMap {
         current
     }
 
-    pub fn insert(&mut self, ident: Option<Ident>, kind: DefKind, span: SourceSpan, id: AstId) -> DefId {
+    pub fn insert(&mut self, id: AstId, kind: DefKind) -> DefId {
         let def_id = self.increment_def_id();
-        self.definitions
-            .insert(def_id, Definition::new(def_id, ident, kind, span));
+        self.definitions.insert(def_id, Definition::new(def_id, kind));
         self.ast_to_def.insert(id, def_id);
         def_id
     }
 
-    pub fn insert_with_ident(&mut self, ident: &AstNode<Ident>, kind: DefKind) -> DefId {
-        self.insert(Some(ident.node.clone()), kind, ident.span, ident.ast_id)
+    pub fn get_definition(&self, def_id: DefId) -> Option<&Definition> {
+        self.definitions.get(&def_id)
     }
 
-    pub fn get(&self, def_id: &DefId) -> Option<&Definition> {
-        self.definitions.get(def_id)
+    pub fn get_def_from_ast(&self, ast_id: AstId) -> Option<&DefId> {
+        self.ast_to_def.get(&ast_id)
     }
 }
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct Definition {
     def_id: DefId,
-    ident: Option<Ident>,
-    pub span: SourceSpan,
     kind: DefKind,
 }
 
 impl Definition {
-    pub fn new(def_id: DefId, ident: Option<Ident>, kind: DefKind, span: SourceSpan) -> Self {
-        Self {
-            def_id,
-            ident,
-            span,
-            kind,
-        }
+    pub fn new(def_id: DefId, kind: DefKind) -> Self {
+        Self { def_id, kind }
     }
 }
 

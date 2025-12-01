@@ -4,7 +4,7 @@ use crate::resolver::visitor;
 use crate::Resolver;
 
 pub struct DefCollector<'a, 'r> {
-    pub resolver: &'a mut Resolver<'r>,
+    resolver: &'a mut Resolver<'r>,
 }
 
 impl<'a, 'r> DefCollector<'a, 'r> {
@@ -16,45 +16,34 @@ impl<'a, 'r> DefCollector<'a, 'r> {
 impl<'a, 'r> visitor::Visitor for DefCollector<'a, 'r> {
     fn visit_item(&mut self, item: &AstNode<Item>) {
         let def_kind = DefKind::from(&item.node);
-
-        match item.node.ident() {
-            None => self.resolver.defs.insert(None, def_kind, item.span, item.ast_id),
-            Some(ident) => self.resolver.defs.insert_with_ident(ident, def_kind),
-        };
-
+        self.resolver.defs.insert(item.ast_id, def_kind);
         visitor::walk_item(self, item);
     }
 
     fn visit_generic_param(&mut self, generic_param: &AstNode<GenericParam>) {
-        self.resolver
-            .defs
-            .insert_with_ident(&generic_param.node.ident, DefKind::TypeParam);
+        self.resolver.defs.insert(generic_param.ast_id, DefKind::TypeParam);
 
         visitor::walk_generic_param(self, generic_param);
     }
 
     fn visit_struct_field_def(&mut self, struct_field_def: &AstNode<StructFieldDef>) {
-        self.resolver
-            .defs
-            .insert_with_ident(&struct_field_def.node.ident, DefKind::StructField);
+        self.resolver.defs.insert(struct_field_def.ast_id, DefKind::StructField);
 
         visitor::walk_struct_field_def(self, struct_field_def);
     }
 
     fn visit_enum_variant(&mut self, enum_variant: &AstNode<EnumVariant>) {
-        self.resolver
-            .defs
-            .insert_with_ident(&enum_variant.node.ident, DefKind::EnumVariant);
+        self.resolver.defs.insert(enum_variant.ast_id, DefKind::EnumVariant);
 
         visitor::walk_enum_variant(self, enum_variant);
     }
 
     fn visit_assoc_item(&mut self, assoc_item: &AstNode<AssociatedItem>) {
-        let (ident, def_kind) = match &assoc_item.node {
-            AssociatedItem::Fn(sig, _) => (&sig.node.ident, DefKind::AssocFn),
-            AssociatedItem::Type(ty) => (&ty.node.ident, DefKind::AssocTypeAlias),
+        let def_kind = match &assoc_item.node {
+            AssociatedItem::Fn(_, _) => DefKind::AssocFn,
+            AssociatedItem::Type(_) => DefKind::AssocTypeAlias,
         };
 
-        self.resolver.defs.insert_with_ident(ident, def_kind);
+        self.resolver.defs.insert(assoc_item.ast_id, def_kind);
     }
 }

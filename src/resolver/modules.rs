@@ -1,28 +1,43 @@
 use crate::parser::ast::{Ident, Path};
 use crate::resolver::defs::DefId;
-use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 
-#[derive(Copy, Debug, Clone, PartialEq, Eq, Hash)]
-pub struct ModuleId(usize);
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct ModuleId(pub usize);
 
-pub struct Module<'a> {
-    parent: Option<&'a Module<'a>>,
-    items: RefCell<HashMap<String, Binding<'a>>>,
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct ImportId(usize);
+
+#[derive(Debug, Clone, Default)]
+pub struct Module {
+    parent: Option<ModuleId>,
+    items: HashMap<Ident, Binding>,
 }
 
-pub enum Binding<'a> {
+impl Module {
+    pub fn new(parent: ModuleId) -> Self {
+        Self {
+            parent: Some(parent),
+            items: HashMap::new(),
+        }
+    }
+
+    pub fn define(&mut self, ident: Ident, binding: Binding) {
+        self.items.insert(ident, binding);
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum Binding {
     Item(DefId),
-    Module(Module<'a>),
-    Import {
-        binding: &'a Binding<'a>,
-        import: &'a Import<'a>,
-    },
+    Module(ModuleId),
+    Import { binding: Box<Binding>, import: ImportId },
 }
 
-pub struct Import<'a> {
+#[derive(Debug, Clone)]
+pub struct Import {
     path: Path,
     name: Ident,
-    parent_module: &'a Module<'a>,
-    resolved_binding: Cell<Option<&'a Binding<'a>>>,
+    parent_module: ModuleId,
+    resolved_binding: Option<Binding>,
 }
