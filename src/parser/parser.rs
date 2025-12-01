@@ -531,7 +531,7 @@ impl<'a> Parser<'a> {
         let variants = self.parse_separated_delimited(
             TokenKind::OpeningDelimiter(Delimiter::Brace),
             TokenKind::ClosingDelimiter(Delimiter::Brace),
-            TokenKind::Punctuation(Punct::Colon),
+            TokenKind::Punctuation(Punct::Comma),
             |p| p.parse_enum_variant(),
         );
 

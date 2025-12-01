@@ -467,6 +467,22 @@ pub enum BinOp {
     NotEq,
 }
 
+impl Item {
+    pub fn ident(&self) -> Option<&AstNode<Ident>> {
+        match self {
+            Item::Fn(FnDecl { sig, .. }) => Some(&sig.node.ident),
+            Item::Struct(StructDecl { ident, .. }) => Some(ident),
+            Item::Enum(EnumDecl { ident, .. }) => Some(ident),
+            Item::Trait(TraitDecl { ident, .. }) => Some(ident),
+            Item::Mod(ModDecl { ident, .. }) => Some(ident),
+            Item::ExternFn(ExternFnDecl { sig, .. }) => Some(&sig.node.ident),
+            Item::Const(ConstDecl { ident, .. }) => Some(ident),
+            Item::TyAlias(TyAliasDecl { ident, .. }) => Some(ident),
+            Item::Impl(_) | Item::Use(_) | Item::Err => None,
+        }
+    }
+}
+
 impl TryFrom<&Token> for BinOp {
     type Error = ();
 

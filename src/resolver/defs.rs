@@ -1,4 +1,5 @@
-use crate::parser::ast::{AstNode, Ident};
+use crate::parser::ast::{AstNode, Ident, Item};
+use crate::parser::AstId;
 use miette::SourceSpan;
 use std::collections::HashMap;
 
@@ -8,6 +9,7 @@ pub struct DefId(usize);
 #[derive(Clone, PartialEq, Debug, Default)]
 pub struct DefinitionMap {
     definitions: HashMap<DefId, Definition>,
+    ast_to_def: HashMap<AstId, DefId>,
     next_def_id: DefId,
 }
 
@@ -18,10 +20,16 @@ impl DefinitionMap {
         current
     }
 
-    pub fn insert(&mut self, ident: AstNode<Ident>, kind: DefKind) -> DefId {
+    pub fn insert(&mut self, ident: Option<Ident>, kind: DefKind, span: SourceSpan, id: AstId) -> DefId {
         let def_id = self.increment_def_id();
-        self.definitions.insert(def_id, Definition::new(def_id, ident, kind));
+        self.definitions
+            .insert(def_id, Definition::new(def_id, ident, kind, span));
+        self.ast_to_def.insert(id, def_id);
         def_id
+    }
+
+    pub fn insert_with_ident(&mut self, ident: &AstNode<Ident>, kind: DefKind) -> DefId {
+        self.insert(Some(ident.node.clone()), kind, ident.span, ident.ast_id)
     }
 
     pub fn get(&self, def_id: &DefId) -> Option<&Definition> {
@@ -32,17 +40,17 @@ impl DefinitionMap {
 #[derive(Clone, PartialEq, Debug)]
 pub struct Definition {
     def_id: DefId,
-    ident: Ident,
+    ident: Option<Ident>,
     pub span: SourceSpan,
     kind: DefKind,
 }
 
 impl Definition {
-    pub fn new(def_id: DefId, ident: AstNode<Ident>, kind: DefKind) -> Self {
+    pub fn new(def_id: DefId, ident: Option<Ident>, kind: DefKind, span: SourceSpan) -> Self {
         Self {
             def_id,
-            ident: ident.node,
-            span: ident.span,
+            ident,
+            span,
             kind,
         }
     }
@@ -55,12 +63,35 @@ pub enum DefKind {
     Enum,
     EnumVariant,
     Trait,
+    Mod,
     Impl,
     Function,
+    AssocFn,
+    ExternFn,
+    Use,
     Const,
     Variable,
     Parameter,
     TypeParam,
     TypeAlias,
+    AssocTypeAlias,
     BuiltinType,
+}
+
+impl From<&Item> for DefKind {
+    fn from(value: &Item) -> Self {
+        match value {
+            Item::Fn(_) => DefKind::Function,
+            Item::Struct(_) => DefKind::Struct,
+            Item::Enum(_) => DefKind::Enum,
+            Item::Trait(_) => DefKind::Trait,
+            Item::Mod(_) => DefKind::Mod,
+            Item::Impl(_) => DefKind::Impl,
+            Item::ExternFn(_) => DefKind::ExternFn,
+            Item::Const(_) => DefKind::Const,
+            Item::Use(_) => DefKind::Use,
+            Item::TyAlias(_) => DefKind::TypeAlias,
+            Item::Err => panic!(),
+        }
+    }
 }

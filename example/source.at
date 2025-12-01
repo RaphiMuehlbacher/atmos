@@ -1,7 +1,12 @@
-fn test() {
-    fn moin() {}
+enum E {
+    A {
+        Abar: i32,
+    },
+    B(i32),
+    C,
 }
 
-mod foo {
-    struct A;
+
+struct S {
+    Sbar: i32,
 }

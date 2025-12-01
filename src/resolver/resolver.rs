@@ -8,7 +8,6 @@ use crate::parser::AstId;
 use crate::resolver::collect_defs::DefCollector;
 use crate::resolver::defs::{DefId, DefKind, DefinitionMap};
 use crate::resolver::modules::{Import, Module};
-use crate::resolver::resolutions::ResolutionMap;
 use crate::resolver::ribs::{Rib, RibKind};
 use crate::resolver::visitor::walk_crate;
 use crate::resolver::ResolverError;
@@ -20,8 +19,7 @@ pub struct Resolver<'ast> {
     ast_program: &'ast Crate,
 
     ribs: Vec<Rib>,
-    resolutions: ResolutionMap,
-    definitions: DefinitionMap,
+    pub defs: DefinitionMap,
 
     modules: HashMap<AstId, Module<'ast>>,
     unresolved_imports: Vec<Import<'ast>>,
@@ -33,12 +31,11 @@ impl<'ast> Resolver<'ast> {
             session,
             ast_program,
             ribs: vec![Rib::item()],
-            resolutions: ResolutionMap::default(),
-            definitions: DefinitionMap::default(),
+            defs: DefinitionMap::default(),
             modules: HashMap::new(),
             unresolved_imports: Vec::new(),
         };
-        resolver.insert_builtins();
+        // resolver.insert_builtins();
         resolver
     }
 
@@ -52,7 +49,7 @@ impl<'ast> Resolver<'ast> {
 
     fn insert_builtin_type(&mut self, name: &str) {
         let ident = AstNode::new(Ident::new(name.to_string()), miette::SourceSpan::err_span());
-        let def_id = self.definitions.insert(ident, DefKind::BuiltinType);
+        let def_id = self.defs.insert_with_ident(&ident, DefKind::BuiltinType);
         self.innermost_rib().insert(name.to_string(), def_id);
     }
 
@@ -63,6 +60,7 @@ impl<'ast> Resolver<'ast> {
     fn collect_definitions(&mut self, krate: &Crate) {
         let mut def_collector = DefCollector::new(self);
         walk_crate(&mut def_collector, krate);
+        dbg!(&self.defs);
     }
 
     fn resolve_item(&mut self, item: &AstNode<Item>) {
@@ -96,37 +94,6 @@ impl<'ast> Resolver<'ast> {
         }
     }
 
-    fn declare_item(&mut self, item: &AstNode<Item>) {
-        match &item.node {
-            Item::Fn(fn_decl) => {
-                self.define_ident(&fn_decl.sig.node.ident, DefKind::Function);
-            }
-            Item::Struct(struct_decl) => {
-                self.define_ident(&struct_decl.ident, DefKind::Struct);
-            }
-            Item::Enum(enum_decl) => {
-                self.define_ident(&enum_decl.ident, DefKind::Enum);
-            }
-            Item::Trait(trait_decl) => {
-                self.define_ident(&trait_decl.ident, DefKind::Trait);
-            }
-            Item::Mod(_) => {}
-            Item::Impl(impl_decl) => {}
-            Item::ExternFn(extern_fn_decl) => {
-                self.define_ident(&extern_fn_decl.sig.node.ident, DefKind::Function);
-            }
-            Item::Const(const_decl) => {
-                self.define_ident(&const_decl.ident, DefKind::Const);
-            }
-            Item::Use(use_item) => todo!(),
-
-            Item::TyAlias(ty_alias_decl) => {
-                self.define_ident(&ty_alias_decl.ident, DefKind::TypeAlias);
-            }
-            Item::Err => {}
-        }
-    }
-
     fn resolve_fn_sig(&mut self, sig: &AstNode<FnSig>) {
         for type_param in &sig.node.generics {
             self.resolve_type_param(type_param);
@@ -136,11 +103,6 @@ impl<'ast> Resolver<'ast> {
             self.resolve_pattern_with_rib(&param.node.pattern, DefKind::Parameter, RibKind::Local);
             self.resolve_type(&param.node.type_annotation);
         }
-    }
-
-    fn resolve_block(&mut self, block: &BlockExpr) {
-        self.declare_block(block);
-        self.resolve_block_contents(block);
     }
 
     fn resolve_type(&mut self, ty: &AstNode<Ty>) {
@@ -184,7 +146,6 @@ impl<'ast> Resolver<'ast> {
         }
     }
     fn resolve_type_param(&mut self, type_param: &AstNode<GenericParam>) {
-        self.define_ident(&type_param.node.ident, DefKind::TypeParam);
         if let GenericParamKind::Const(ty) = &type_param.node.kind {
             self.resolve_type(ty);
         }
@@ -194,15 +155,7 @@ impl<'ast> Resolver<'ast> {
         }
     }
 
-    fn declare_block(&mut self, block: &BlockExpr) {
-        for stmt in &block.stmts {
-            if let Stmt::Item(item) = &stmt.node {
-                self.declare_item(item);
-            }
-        }
-    }
-
-    fn resolve_block_contents(&mut self, block: &BlockExpr) {
+    fn resolve_block(&mut self, block: &BlockExpr) {
         for stmt in &block.stmts {
             self.resolve_stmt(stmt);
         }
@@ -344,9 +297,7 @@ impl<'ast> Resolver<'ast> {
             }
             Pattern::Path(path) => {
                 if path.node.segments.len() == 1 {
-                    if let Some(segment) = path.node.segments.first() {
-                        self.define_ident(&segment.node.ident, binding_kind.clone());
-                    }
+                    if let Some(segment) = path.node.segments.first() {}
                 } else {
                     self.resolve_path(path);
                 }
@@ -373,21 +324,6 @@ impl<'ast> Resolver<'ast> {
         }
     }
 
-    fn define_ident(&mut self, ident: &AstNode<Ident>, kind: DefKind) {
-        if let Some(previous) = self.innermost_rib().get(&ident.node.name) {
-            self.session
-                .push_error(CompilerError::ResolverError(ResolverError::DuplicateDefinition {
-                    src: self.session.get_named_source(),
-                    span: ident.span,
-                    name: ident.node.name.clone(),
-                    previous_span: self.definitions.get(&previous).unwrap().span,
-                }));
-        }
-        let def_id = self.definitions.insert(ident.clone(), kind);
-        self.resolutions.insert(ident.ast_id, def_id);
-        self.innermost_rib().insert(ident.node.name.clone(), def_id);
-    }
-
     fn resolve_path_segment(&mut self, segment: &AstNode<PathSegment>) {
         let ident = &segment.node.ident;
         let Some(def_id) = self.lookup_rib(&ident.node.name) else {
@@ -399,7 +335,6 @@ impl<'ast> Resolver<'ast> {
                 }));
             return;
         };
-        self.resolutions.insert(ident.ast_id, def_id);
     }
 
     fn resolve_path(&mut self, path: &AstNode<Path>) {
