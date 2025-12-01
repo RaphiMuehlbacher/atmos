@@ -1,12 +1,1 @@
-enum E {
-    A {
-        Abar: i32,
-    },
-    B(i32),
-    C,
-}
-
-
-struct S {
-    Sbar: i32,
-}
+fn test<T>(a: T) -> T {}

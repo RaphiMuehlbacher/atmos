@@ -35,7 +35,7 @@ impl<'ast> Resolver<'ast> {
             modules: HashMap::new(),
             unresolved_imports: Vec::new(),
         };
-        // resolver.insert_builtins();
+        resolver.insert_builtins();
         resolver
     }
 
@@ -100,7 +100,6 @@ impl<'ast> Resolver<'ast> {
         }
 
         for param in &sig.node.params {
-            self.resolve_pattern_with_rib(&param.node.pattern, DefKind::Parameter, RibKind::Local);
             self.resolve_type(&param.node.type_annotation);
         }
     }
@@ -171,8 +170,6 @@ impl<'ast> Resolver<'ast> {
     }
 
     fn resolve_let_stmt(&mut self, let_stmt: &LetStmt) {
-        self.resolve_pattern_with_rib(&let_stmt.pat, DefKind::Variable, RibKind::Local);
-
         if let Some(expr) = &let_stmt.expr {
             self.resolve_expr(&expr);
         }
@@ -222,7 +219,6 @@ impl<'ast> Resolver<'ast> {
             Expr::Loop(loop_expr) => self.resolve_block(&loop_expr.body.node),
             Expr::For(for_expr) => {
                 self.resolve_expr(&for_expr.iterator);
-                self.resolve_pattern_with_rib(&for_expr.pattern, DefKind::Variable, RibKind::Local);
                 self.resolve_block(&for_expr.body.node);
             }
             Expr::Assign(assign) => {
@@ -270,7 +266,6 @@ impl<'ast> Resolver<'ast> {
             }
             Expr::Let(let_expr) => {
                 self.resolve_expr(&let_expr.value);
-                self.resolve_pattern_with_rib(&let_expr.pattern, DefKind::Variable, RibKind::Local);
             }
             Expr::Paren(inner) => self.resolve_expr(inner),
             Expr::Err => {}
@@ -278,7 +273,6 @@ impl<'ast> Resolver<'ast> {
     }
 
     fn resolve_match_arm(&mut self, arm: &AstNode<MatchArm>) {
-        self.resolve_pattern_with_rib(&arm.node.pattern, DefKind::Variable, RibKind::Local);
         self.resolve_expr(&arm.node.body);
     }
 

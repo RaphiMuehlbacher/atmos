@@ -70,8 +70,6 @@ pub enum DefKind {
     ExternFn,
     Use,
     Const,
-    Variable,
-    Parameter,
     TypeParam,
     TypeAlias,
     AssocTypeAlias,
