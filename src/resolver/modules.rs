@@ -6,7 +6,7 @@ use std::collections::HashMap;
 pub struct ModuleId(pub usize);
 
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
-pub struct ImportId(usize);
+pub struct ImportId(pub usize);
 
 #[derive(Debug, Clone, Default)]
 pub struct Module {
@@ -31,13 +31,22 @@ impl Module {
 pub enum Binding {
     Item(DefId),
     Module(ModuleId),
-    Import { binding: Box<Binding>, import: ImportId },
+    Import(ImportId),
 }
 
 #[derive(Debug, Clone)]
 pub struct Import {
-    path: Path,
-    name: Ident,
-    parent_module: ModuleId,
-    resolved_binding: Option<Binding>,
+    pub path: Path,
+    pub parent_module: ModuleId,
+    pub resolved_binding: Option<Binding>,
+}
+
+impl Import {
+    pub fn new(path: Path, parent_module: ModuleId) -> Self {
+        Self {
+            path,
+            parent_module,
+            resolved_binding: None,
+        }
+    }
 }

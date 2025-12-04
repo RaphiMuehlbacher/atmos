@@ -1,11 +1,12 @@
-use crate::parser::ast::{AstNode, Ident, Item};
-use crate::resolver::modules::{Binding, Module, ModuleId};
+use crate::parser::ast::{AssociatedItem, AstNode, EnumVariant, GenericParam, Ident, Item};
+use crate::resolver::modules::{Binding, Import, ImportId, Module, ModuleId};
 use crate::resolver::visitor;
 use crate::Resolver;
 
 #[derive(Debug, Clone)]
 pub struct ModuleArena {
     modules: Vec<Module>,
+    imports: Vec<Import>,
     root_id: ModuleId,
 }
 
@@ -16,7 +17,11 @@ impl ModuleArena {
         modules.push(root_module);
         let root_id = ModuleId(0);
 
-        Self { modules, root_id }
+        Self {
+            modules,
+            root_id,
+            imports: Vec::new(),
+        }
     }
 
     pub fn root_id(&self) -> ModuleId {
@@ -39,6 +44,20 @@ impl ModuleArena {
 
     pub fn define(&mut self, module_id: ModuleId, ident: Ident, binding: Binding) {
         self.get_mut(module_id).define(ident, binding);
+    }
+
+    pub fn add_import(&mut self, import: Import) -> ImportId {
+        let id = ImportId(self.imports.len());
+        self.imports.push(import);
+        id
+    }
+
+    pub fn get_import(&self, id: ImportId) -> &Import {
+        &self.imports[id.0]
+    }
+
+    pub fn get_import_mut(&mut self, id: ImportId) -> &mut Import {
+        &mut self.imports[id.0]
     }
 }
 
@@ -85,6 +104,7 @@ impl<'a, 'r> visitor::Visitor for ModuleBuilder<'a, 'r> {
                 self.r
                     .module_arena
                     .define(parent, enum_decl.ident.node.clone(), Binding::Item(*def_id));
+                self.r.modules.insert(item.ast_id, module);
                 self.parent = module;
             }
             Item::Trait(trait_decl) => {
@@ -93,6 +113,7 @@ impl<'a, 'r> visitor::Visitor for ModuleBuilder<'a, 'r> {
                 self.r
                     .module_arena
                     .define(parent, trait_decl.ident.node.clone(), Binding::Item(*def_id));
+                self.r.modules.insert(item.ast_id, module);
                 self.parent = module;
             }
             Item::Const(const_decl) => {
@@ -109,7 +130,13 @@ impl<'a, 'r> visitor::Visitor for ModuleBuilder<'a, 'r> {
                     Binding::Item(*def_id),
                 );
             }
-            Item::Use(use_decl) => {}
+            Item::Use(use_decl) => {
+                let path = &use_decl.path.node;
+                let import = Import::new(path.clone(), parent);
+                let import_id = self.r.module_arena.add_import(import);
+
+                self.r.unresolved_imports.push(import_id);
+            }
             Item::TyAlias(ty_alias_decl) => {
                 let def_id = self.r.defs.get_def_from_ast(item.ast_id).unwrap();
                 self.r
@@ -120,5 +147,33 @@ impl<'a, 'r> visitor::Visitor for ModuleBuilder<'a, 'r> {
         }
         visitor::walk_item(self, item);
         self.parent = parent;
+    }
+
+    fn visit_generic_param(&mut self, generic_param: &AstNode<GenericParam>) {
+        let def_id = self.r.defs.get_def_from_ast(generic_param.ast_id).unwrap();
+        self.r.module_arena.define(
+            self.parent,
+            generic_param.node.ident.node.clone(),
+            Binding::Item(*def_id),
+        );
+    }
+
+    fn visit_assoc_item(&mut self, assoc_item: &AstNode<AssociatedItem>) {
+        let ident = match &assoc_item.node {
+            AssociatedItem::Fn(sig, _) => sig.node.ident.node.clone(),
+            AssociatedItem::Type(ty_alias) => ty_alias.node.ident.node.clone(),
+        };
+
+        let def_id = self.r.defs.get_def_from_ast(assoc_item.ast_id).unwrap();
+        self.r.module_arena.define(self.parent, ident, Binding::Item(*def_id))
+    }
+
+    fn visit_enum_variant(&mut self, enum_variant: &AstNode<EnumVariant>) {
+        let def_id = self.r.defs.get_def_from_ast(enum_variant.ast_id).unwrap();
+        self.r.module_arena.define(
+            self.parent,
+            enum_variant.node.ident.node.clone(),
+            Binding::Item(*def_id),
+        );
     }
 }

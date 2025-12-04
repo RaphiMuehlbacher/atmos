@@ -23,7 +23,7 @@ pub struct Resolver<'ast> {
 
     pub module_arena: ModuleArena,
     pub modules: HashMap<AstId, ModuleId>,
-    unresolved_imports: Vec<ImportId>,
+    pub unresolved_imports: Vec<ImportId>,
 }
 
 impl<'ast> Resolver<'ast> {
