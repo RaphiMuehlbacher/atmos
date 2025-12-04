@@ -1,3 +1,15 @@
-enum A {
-    E,
+mod a {
+    fn fna() {}
+    mod b {
+        fn fnb() {
+            use crate::b::fna;
+            fna();
+        }
+        mod c {
+            fn fnc() {
+                use super::super::fna;
+                fna();
+            }
+        }
+    }
 }

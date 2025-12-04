@@ -6,6 +6,7 @@ use crate::parser::ast::{
 use crate::parser::AstId;
 use crate::resolver::collect_defs::DefCollector;
 use crate::resolver::defs::{DefId, DefKind, DefinitionMap};
+use crate::resolver::imports::ImportResolver;
 use crate::resolver::module_builder::{ModuleArena, ModuleBuilder};
 use crate::resolver::modules::{ImportId, ModuleId};
 use crate::resolver::ribs::{Rib, RibKind};
@@ -15,7 +16,7 @@ use crate::Session;
 use std::collections::HashMap;
 
 pub struct Resolver<'ast> {
-    session: &'ast Session,
+    pub session: &'ast Session,
     ast_program: &'ast Crate,
 
     ribs: Vec<Rib>,
@@ -58,6 +59,7 @@ impl<'ast> Resolver<'ast> {
     pub fn resolve(&mut self) {
         self.collect_definitions(self.ast_program);
         self.build_modules(self.ast_program);
+        self.resolve_imports();
     }
 
     fn collect_definitions(&mut self, krate: &Crate) {
@@ -68,7 +70,11 @@ impl<'ast> Resolver<'ast> {
     fn build_modules(&mut self, krate: &Crate) {
         let mut module_builder = ModuleBuilder::new(self, self.module_arena.root_id());
         walk_crate(&mut module_builder, krate);
-        dbg!(&self.module_arena);
+    }
+
+    fn resolve_imports(&mut self) {
+        let mut import_resolver = ImportResolver::new(self);
+        import_resolver.resolve();
     }
 
     fn resolve_item(&mut self, item: &AstNode<Item>) {

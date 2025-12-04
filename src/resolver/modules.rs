@@ -25,6 +25,14 @@ impl Module {
     pub fn define(&mut self, ident: Ident, binding: Binding) {
         self.items.insert(ident, binding);
     }
+
+    pub fn get(&self, ident: &Ident) -> Option<&Binding> {
+        self.items.get(ident)
+    }
+
+    pub fn parent(&self) -> Option<ModuleId> {
+        self.parent
+    }
 }
 
 #[derive(Debug, Clone)]

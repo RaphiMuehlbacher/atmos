@@ -1,7 +1,8 @@
 pub mod collect_defs;
 pub mod defs;
 pub mod error;
-mod module_builder;
+pub mod imports;
+pub mod module_builder;
 pub mod modules;
 pub mod resolver;
 pub mod ribs;
