@@ -7,8 +7,8 @@ pub struct DefId(usize);
 
 #[derive(Clone, PartialEq, Debug, Default)]
 pub struct DefinitionMap {
-    definitions: HashMap<DefId, Definition>,
-    ast_to_def: HashMap<AstId, DefId>,
+    pub definitions: HashMap<DefId, Definition>,
+    pub ast_to_def: HashMap<AstId, DefId>,
     next_def_id: DefId,
 }
 

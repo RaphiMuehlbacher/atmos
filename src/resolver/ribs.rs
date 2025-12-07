@@ -1,9 +1,16 @@
+use crate::parser::ast::Ident;
+use crate::parser::AstId;
 use crate::resolver::defs::DefId;
 use std::collections::HashMap;
 
+pub enum Res {
+    Local(AstId),
+    Def(DefId),
+}
+
 #[derive(Clone, PartialEq, Debug)]
 pub struct Rib {
-    symbols: HashMap<String, DefId>,
+    symbols: HashMap<Ident, AstId>,
     kind: RibKind,
 }
 
@@ -20,11 +27,11 @@ impl Rib {
     pub fn item() -> Self {
         Self::new(RibKind::Item)
     }
-    pub fn insert(&mut self, name: String, def_id: DefId) {
+    pub fn insert(&mut self, name: Ident, def_id: AstId) {
         self.symbols.insert(name, def_id);
     }
-    pub fn get(&self, name: &str) -> Option<DefId> {
-        self.symbols.get(name).copied()
+    pub fn get(&self, name: &Ident) -> Option<AstId> {
+        self.symbols.get(&name).copied()
     }
 }
 

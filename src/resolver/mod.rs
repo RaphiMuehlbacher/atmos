@@ -2,6 +2,7 @@ pub mod collect_defs;
 pub mod defs;
 pub mod error;
 pub mod imports;
+pub mod late;
 pub mod module_builder;
 pub mod modules;
 pub mod resolver;

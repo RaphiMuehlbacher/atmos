@@ -5,6 +5,7 @@ use crate::parser::ast::{
     VariantData,
 };
 
+#[macro_export]
 macro_rules! visit_list {
     ($visitor: expr, $method: ident, $list: expr ) => {
         for elem in $list {
@@ -13,6 +14,7 @@ macro_rules! visit_list {
     };
 }
 
+#[macro_export]
 macro_rules! visit_opt {
     ($visitor: expr, $method: ident, $opt: expr ) => {
         if let Some(elem) = $opt {

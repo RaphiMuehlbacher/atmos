@@ -1,4 +1,4 @@
-use crate::parser::ast::{AssociatedItem, AstNode, EnumVariant, GenericParam, Ident, Item};
+use crate::parser::ast::{AssociatedItem, AstNode, BlockExpr, EnumVariant, GenericParam, Ident, Item};
 use crate::resolver::modules::{Binding, Import, ImportId, Module, ModuleId};
 use crate::resolver::visitor;
 use crate::Resolver;
@@ -175,5 +175,10 @@ impl<'a, 'r> visitor::Visitor for ModuleBuilder<'a, 'r> {
             enum_variant.node.ident.node.clone(),
             Binding::Item(*def_id),
         );
+    }
+
+    fn visit_block(&mut self, block: &AstNode<BlockExpr>) {
+        let module = self.r.module_arena.add_module(self.parent);
+        self.r.modules.insert(block.ast_id, module);
     }
 }

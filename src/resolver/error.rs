@@ -30,9 +30,6 @@ pub enum ResolverError {
         #[label("redefined here")]
         span: SourceSpan,
 
-        #[label("previously defined here")]
-        previous_span: SourceSpan,
-
         name: String,
     },
 
