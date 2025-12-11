@@ -1,4 +1,11 @@
-fn main() {
-    let (a, b) = (1, 2);
-    let a = 3;
+mod a {
+    mod b {
+        fn test() {}
+    }
+}
+
+mod c {
+    fn main() {
+        let b = crate::a::b::test();
+    }
 }

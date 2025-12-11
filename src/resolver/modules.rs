@@ -8,17 +8,26 @@ pub struct ModuleId(pub usize);
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct ImportId(pub usize);
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct Module {
+    pub kind: ModuleKind,
     parent: Option<ModuleId>,
     items: HashMap<Ident, Binding>,
 }
 
 impl Module {
-    pub fn new(parent: ModuleId) -> Self {
+    pub fn root() -> Self {
+        Self {
+            parent: None,
+            items: HashMap::new(),
+            kind: ModuleKind::Block,
+        }
+    }
+    pub fn new(parent: ModuleId, kind: ModuleKind) -> Self {
         Self {
             parent: Some(parent),
             items: HashMap::new(),
+            kind,
         }
     }
 
@@ -33,6 +42,12 @@ impl Module {
     pub fn parent(&self) -> Option<ModuleId> {
         self.parent
     }
+}
+
+#[derive(Debug, Clone)]
+pub enum ModuleKind {
+    Block,
+    Def(DefId),
 }
 
 #[derive(Debug, Clone)]

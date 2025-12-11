@@ -1,5 +1,5 @@
 use crate::parser::ast::{AssociatedItem, AstNode, BlockExpr, EnumVariant, GenericParam, Ident, Item};
-use crate::resolver::modules::{Binding, Import, ImportId, Module, ModuleId};
+use crate::resolver::modules::{Binding, Import, ImportId, Module, ModuleId, ModuleKind};
 use crate::resolver::visitor;
 use crate::Resolver;
 
@@ -13,7 +13,7 @@ pub struct ModuleArena {
 impl ModuleArena {
     pub fn new() -> Self {
         let mut modules = Vec::new();
-        let root_module = Module::default();
+        let root_module = Module::root();
         modules.push(root_module);
         let root_id = ModuleId(0);
 
@@ -36,9 +36,9 @@ impl ModuleArena {
         &mut self.modules[id.0]
     }
 
-    pub fn add_module(&mut self, parent: ModuleId) -> ModuleId {
+    pub fn add_module(&mut self, parent: ModuleId, kind: ModuleKind) -> ModuleId {
         let id = ModuleId(self.modules.len());
-        self.modules.push(Module::new(parent));
+        self.modules.push(Module::new(parent, kind));
         id
     }
 
@@ -75,10 +75,11 @@ impl<'a, 'r> ModuleBuilder<'a, 'r> {
 impl<'a, 'r> visitor::Visitor for ModuleBuilder<'a, 'r> {
     fn visit_item(&mut self, item: &AstNode<Item>) {
         let parent = self.parent;
+        let def_id = self.r.defs.get_def_from_ast(item.ast_id).unwrap();
 
         match &item.node {
             Item::Mod(module_decl) => {
-                let module = self.r.module_arena.add_module(self.parent);
+                let module = self.r.module_arena.add_module(self.parent, ModuleKind::Def(*def_id));
                 self.r
                     .module_arena
                     .define(parent, module_decl.ident.node.clone(), Binding::Module(module));
@@ -87,20 +88,17 @@ impl<'a, 'r> visitor::Visitor for ModuleBuilder<'a, 'r> {
                 self.parent = module;
             }
             Item::Fn(fn_decl) => {
-                let def_id = self.r.defs.get_def_from_ast(item.ast_id).unwrap();
                 self.r
                     .module_arena
                     .define(parent, fn_decl.sig.node.ident.node.clone(), Binding::Item(*def_id));
             }
             Item::Struct(struct_decl) => {
-                let def_id = self.r.defs.get_def_from_ast(item.ast_id).unwrap();
                 self.r
                     .module_arena
                     .define(parent, struct_decl.ident.node.clone(), Binding::Item(*def_id));
             }
             Item::Enum(enum_decl) => {
-                let module = self.r.module_arena.add_module(self.parent);
-                let def_id = self.r.defs.get_def_from_ast(item.ast_id).unwrap();
+                let module = self.r.module_arena.add_module(self.parent, ModuleKind::Def(*def_id));
                 self.r
                     .module_arena
                     .define(parent, enum_decl.ident.node.clone(), Binding::Item(*def_id));
@@ -108,8 +106,7 @@ impl<'a, 'r> visitor::Visitor for ModuleBuilder<'a, 'r> {
                 self.parent = module;
             }
             Item::Trait(trait_decl) => {
-                let module = self.r.module_arena.add_module(self.parent);
-                let def_id = self.r.defs.get_def_from_ast(item.ast_id).unwrap();
+                let module = self.r.module_arena.add_module(self.parent, ModuleKind::Def(*def_id));
                 self.r
                     .module_arena
                     .define(parent, trait_decl.ident.node.clone(), Binding::Item(*def_id));
@@ -117,13 +114,11 @@ impl<'a, 'r> visitor::Visitor for ModuleBuilder<'a, 'r> {
                 self.parent = module;
             }
             Item::Const(const_decl) => {
-                let def_id = self.r.defs.get_def_from_ast(item.ast_id).unwrap();
                 self.r
                     .module_arena
                     .define(parent, const_decl.ident.node.clone(), Binding::Item(*def_id));
             }
             Item::ExternFn(extern_fn_decl) => {
-                let def_id = self.r.defs.get_def_from_ast(item.ast_id).unwrap();
                 self.r.module_arena.define(
                     parent,
                     extern_fn_decl.sig.node.ident.node.clone(),
@@ -138,7 +133,6 @@ impl<'a, 'r> visitor::Visitor for ModuleBuilder<'a, 'r> {
                 self.r.unresolved_imports.push(import_id);
             }
             Item::TyAlias(ty_alias_decl) => {
-                let def_id = self.r.defs.get_def_from_ast(item.ast_id).unwrap();
                 self.r
                     .module_arena
                     .define(parent, ty_alias_decl.ident.node.clone(), Binding::Item(*def_id));
@@ -178,7 +172,7 @@ impl<'a, 'r> visitor::Visitor for ModuleBuilder<'a, 'r> {
     }
 
     fn visit_block(&mut self, block: &AstNode<BlockExpr>) {
-        let module = self.r.module_arena.add_module(self.parent);
+        let module = self.r.module_arena.add_module(self.parent, ModuleKind::Block);
         self.r.modules.insert(block.ast_id, module);
     }
 }

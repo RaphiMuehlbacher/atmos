@@ -26,6 +26,10 @@ impl DefinitionMap {
         def_id
     }
 
+    pub fn insert_ast_id(&mut self, ast_id: AstId, def_id: DefId) {
+        self.ast_to_def.insert(ast_id, def_id);
+    }
+
     pub fn get_definition(&self, def_id: DefId) -> Option<&Definition> {
         self.definitions.get(&def_id)
     }

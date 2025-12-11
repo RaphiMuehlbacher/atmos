@@ -1,7 +1,7 @@
 use crate::error::CompilerError;
-use crate::parser::ast::{AstNode, BlockExpr, Expr, Ident, Item, LetStmt, Path, Pattern};
+use crate::parser::ast::{AstNode, BlockExpr, Expr, Ident, Item, LetStmt, Path, PathSegment, Pattern};
 use crate::resolver::defs::DefKind;
-use crate::resolver::modules::{Binding, ModuleId};
+use crate::resolver::modules::{Binding, ModuleId, ModuleKind};
 use crate::resolver::ribs::{Res, Rib, RibKind};
 use crate::resolver::{visitor, ResolverError};
 use crate::{visit_opt, Resolver};
@@ -74,22 +74,20 @@ impl<'a, 'r> LateResolver<'a, 'r> {
             }
             Pattern::Path(path) => {
                 if path.node.segments.len() == 1 {
-                    // Ident
                     let segment = &path.node.segments[0];
                     let name = &segment.node.ident;
 
                     if matches!(source, PatternSource::Match) {
-                        // In match arms: first try to resolve as a value (enum variant, const)
-                        if let Some(_def_id) = self.lookup_value(&name.node) {
-                            // Found! This is a constructor pattern (e.g., `None`, `CONST`)
-                            // TODO: record resolution
+                        if let Some(res) = self.lookup_value(&name.node) {
+                            match res {
+                                Res::Local(_) => todo!(),
+                                Res::Def(def_id) => self.r.defs.insert_ast_id(path.ast_id, def_id),
+                            }
                             return;
                         }
                     }
-                    // Not found (or not in match context): this is a binding
                     self.define_binding(&name, pattern);
                 } else {
-                    // Path
                     self.resolve_path(path);
                 }
             }
@@ -164,8 +162,136 @@ impl<'a, 'r> LateResolver<'a, 'r> {
     }
 
     fn resolve_path(&mut self, path: &AstNode<Path>) {
-        // TODO: implement path resolution
-        visitor::walk_path(self, path);
+        if path.node.segments.is_empty() {
+            return;
+        }
+
+        let segments = &path.node.segments;
+        let (mut current_module, segment_start) = self.resolve_first_segment(segments);
+
+        if segments.len() == 1 && segment_start == 0 {
+            let first_ident = &segments[0].node.ident.node;
+            if self.lookup_value(first_ident).is_none() {
+                self.report_unresolved_path(path);
+            }
+            return;
+        }
+
+        // Multi-segment path - resolve through modules
+        for (i, segment) in segments.iter().enumerate().skip(segment_start) {
+            let ident = &segment.node.ident.node;
+
+            let binding = self.resolve_ident_in_module(current_module, ident);
+
+            match binding {
+                Some(binding) => match binding {
+                    Binding::Module(module_id) => {
+                        current_module = module_id;
+                    }
+                    Binding::Item(def_id) => {
+                        if i < segments.len() - 1 {
+                            self.report_unresolved_path(path);
+                            return;
+                        }
+                        self.r.defs.insert_ast_id(path.ast_id, def_id);
+                        return;
+                    }
+                    Binding::Import(import_id) => {
+                        // Follow the import
+                        let import = self.r.module_arena.get_import(import_id);
+                        match &import.resolved_binding {
+                            Some(Binding::Module(module_id)) => {
+                                current_module = *module_id;
+                            }
+                            Some(Binding::Item(def_id)) => {
+                                if i < segments.len() - 1 {
+                                    self.report_unresolved_path(path);
+                                    return;
+                                }
+                                self.r.defs.insert_ast_id(path.ast_id, *def_id);
+                                return;
+                            }
+                            Some(Binding::Import(_)) | None => {
+                                self.report_unresolved_path(path);
+                                return;
+                            }
+                        }
+                    }
+                },
+                None => {
+                    self.report_unresolved_path(path);
+                    return;
+                }
+            }
+        }
+
+        if let ModuleKind::Def(def_id) = self.r.module_arena.get(current_module).kind {
+            self.r.defs.insert_ast_id(path.ast_id, def_id);
+        } else {
+            todo!("emit error")
+        }
+    }
+
+    fn resolve_first_segment(&self, segments: &[AstNode<PathSegment>]) -> (ModuleId, usize) {
+        let first_ident = &segments[0].node.ident.node;
+
+        match first_ident.name.as_str() {
+            "crate" => (self.r.module_arena.root_id(), 1),
+            "super" => {
+                let module = self.r.module_arena.get(self.parent);
+                let parent = module.parent().unwrap();
+
+                let mut current = parent;
+                let mut skip = 1;
+
+                for segment in segments.iter().skip(1) {
+                    if segment.node.ident.node.name == "super" {
+                        let module = self.r.module_arena.get(current);
+                        current = module.parent().unwrap_or(current);
+                        skip += 1;
+                    } else {
+                        break;
+                    }
+                }
+
+                (current, skip)
+            }
+            "self" => (self.parent, 1),
+            _ => (self.parent, 0),
+        }
+    }
+
+    fn resolve_ident_in_module(&self, module_id: ModuleId, ident: &Ident) -> Option<Binding> {
+        let module = self.r.module_arena.get(module_id);
+        match module.get(ident) {
+            Some(binding) => Some(binding.clone()),
+            None => match module.kind {
+                ModuleKind::Block => {
+                    let parent = module.parent()?;
+                    self.resolve_ident_in_module(parent, ident)
+                }
+                // TODO: maybe not in enums
+                ModuleKind::Def(_) => None,
+            },
+        }
+    }
+
+    fn report_unresolved_path(&mut self, path: &AstNode<Path>) {
+        let path_str = path
+            .node
+            .segments
+            .iter()
+            .map(|s| s.node.ident.node.name.clone())
+            .collect::<Vec<_>>()
+            .join("::");
+
+        self.r
+            .session
+            .push_error(CompilerError::ResolverError(ResolverError::UnresolvedPath {
+                src: self.r.session.get_named_source(),
+                span: path.span,
+                path: path_str,
+            }));
     }
 }
 
