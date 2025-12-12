@@ -1,4 +1,6 @@
+struct Person {
+
+}
 fn main<T>(a: T) {
-    let a = 3;
-    let val = T.default();
+    let val = Person::default();
 }

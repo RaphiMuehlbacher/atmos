@@ -14,7 +14,6 @@ fn main() {
 
     let mut parser = Parser::new(&session, tokens);
     let ast = parser.parse_crate();
-    dbg!(&ast);
 
     let mut resolver = Resolver::new(&session, &ast);
     resolver.resolve();

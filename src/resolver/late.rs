@@ -3,8 +3,8 @@ use crate::parser::ast::{AstNode, BlockExpr, Expr, Ident, Item, LetStmt, Path, P
 use crate::resolver::defs::DefKind;
 use crate::resolver::modules::{Binding, ModuleId, ModuleKind};
 use crate::resolver::ribs::{Res, Rib, RibKind};
-use crate::resolver::{visitor, ResolverError};
-use crate::{visit_opt, Resolver};
+use crate::resolver::{ResolverError, visitor};
+use crate::{Resolver, visit_opt};
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum PatternSource {
@@ -147,8 +147,8 @@ impl<'a, 'r> LateResolver<'a, 'r> {
             let first_ident = &segments[0].node.ident.node;
             if self.lookup_value(first_ident).is_none() {
                 self.report_unresolved_path(path);
+                return;
             }
-            return;
         }
 
         for (i, segment) in segments.iter().enumerate().skip(segment_start) {
@@ -162,7 +162,20 @@ impl<'a, 'r> LateResolver<'a, 'r> {
                         current_module = module_id;
                     }
                     Binding::Item(def_id) => {
+                        let def = self.r.defs.get_definition(def_id);
+
                         if i < segments.len() - 1 {
+                            if matches!(
+                                def.unwrap().kind,
+                                DefKind::TypeParam
+                                    | DefKind::Struct
+                                    | DefKind::Enum
+                                    | DefKind::TypeAlias
+                                    | DefKind::Trait
+                            ) {
+                                self.r.defs.insert_ast_id(path.ast_id, def_id);
+                                return;
+                            }
                             self.report_unresolved_path(path);
                             return;
                         }
@@ -176,7 +189,20 @@ impl<'a, 'r> LateResolver<'a, 'r> {
                                 current_module = *module_id;
                             }
                             Some(Binding::Item(def_id)) => {
+                                let def = self.r.defs.get_definition(*def_id);
+
                                 if i < segments.len() - 1 {
+                                    if matches!(
+                                        def.unwrap().kind,
+                                        DefKind::TypeParam
+                                            | DefKind::Struct
+                                            | DefKind::Enum
+                                            | DefKind::TypeAlias
+                                            | DefKind::Trait
+                                    ) {
+                                        self.r.defs.insert_ast_id(path.ast_id, *def_id);
+                                        return;
+                                    }
                                     self.report_unresolved_path(path);
                                     return;
                                 }
