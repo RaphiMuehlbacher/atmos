@@ -6,6 +6,7 @@ mod a {
 
 mod c {
     fn main() {
-        let b = crate::a::b::test();
+        use super::a::b;
+        let b = b::test();
     }
 }

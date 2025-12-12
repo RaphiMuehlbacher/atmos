@@ -41,8 +41,8 @@ impl DefinitionMap {
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct Definition {
-    def_id: DefId,
-    kind: DefKind,
+    pub def_id: DefId,
+    pub kind: DefKind,
 }
 
 impl Definition {

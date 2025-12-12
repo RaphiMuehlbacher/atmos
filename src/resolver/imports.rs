@@ -130,7 +130,7 @@ impl<'a, 'r> ImportResolver<'a, 'r> {
                 for segment in segments.iter().skip(1) {
                     if segment.node.ident.node.name == "super" {
                         let module = self.r.module_arena.get(current);
-                        current = module.parent().unwrap_or(current);
+                        current = module.parent().expect("Add error if super goes beyond root");
                         skip += 1;
                     } else {
                         break;

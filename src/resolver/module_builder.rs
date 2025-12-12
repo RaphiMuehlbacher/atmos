@@ -174,5 +174,6 @@ impl<'a, 'r> visitor::Visitor for ModuleBuilder<'a, 'r> {
     fn visit_block(&mut self, block: &AstNode<BlockExpr>) {
         let module = self.r.module_arena.add_module(self.parent, ModuleKind::Block);
         self.r.modules.insert(block.ast_id, module);
+        visitor::walk_block(self, block);
     }
 }

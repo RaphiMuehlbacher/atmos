@@ -65,7 +65,6 @@ impl<'a, 'r> LateResolver<'a, 'r> {
 
     fn resolve_pattern(&mut self, pattern: &AstNode<Pattern>, source: PatternSource) {
         match &pattern.node {
-            Pattern::Wildcard => {}
             Pattern::Or(patterns) => {
                 // TODO: All alternatives must bind the same names
                 for pat in patterns {
@@ -91,34 +90,7 @@ impl<'a, 'r> LateResolver<'a, 'r> {
                     self.resolve_path(path);
                 }
             }
-            Pattern::Struct(path, fields) => {
-                // Resolve the struct/variant path
-                self.resolve_path(path);
-                // Resolve field patterns
-                for field in fields {
-                    self.resolve_pattern(&field.node.pattern, source);
-                }
-            }
-            Pattern::TupleStruct(path, patterns) => {
-                // Resolve the tuple struct/variant path
-                self.resolve_path(path);
-                // Resolve inner patterns
-                for pat in patterns {
-                    self.resolve_pattern(pat, source);
-                }
-            }
-            Pattern::Tuple(patterns) => {
-                for pat in patterns {
-                    self.resolve_pattern(pat, source);
-                }
-            }
-            Pattern::Expr(expr) => {
-                // Constant expression pattern (e.g., `1`, `"hello"`)
-                visitor::walk_expr(self, expr);
-            }
-            Pattern::Paren(inner) => {
-                self.resolve_pattern(inner, source);
-            }
+            _ => visitor::walk_pattern(self, pattern),
         }
     }
 
@@ -147,7 +119,6 @@ impl<'a, 'r> LateResolver<'a, 'r> {
             .or_else(|| self.lookup_modules(ident, self.parent))
     }
 
-    /// Define a new binding in the current rib
     fn define_binding(&mut self, ident: &AstNode<Ident>, pattern: &AstNode<Pattern>) {
         if self.innermost_rib().get(&ident.node).is_some() {
             self.r
@@ -177,7 +148,6 @@ impl<'a, 'r> LateResolver<'a, 'r> {
             return;
         }
 
-        // Multi-segment path - resolve through modules
         for (i, segment) in segments.iter().enumerate().skip(segment_start) {
             let ident = &segment.node.ident.node;
 
@@ -197,7 +167,6 @@ impl<'a, 'r> LateResolver<'a, 'r> {
                         return;
                     }
                     Binding::Import(import_id) => {
-                        // Follow the import
                         let import = self.r.module_arena.get_import(import_id);
                         match &import.resolved_binding {
                             Some(Binding::Module(module_id)) => {
@@ -238,16 +207,28 @@ impl<'a, 'r> LateResolver<'a, 'r> {
         match first_ident.name.as_str() {
             "crate" => (self.r.module_arena.root_id(), 1),
             "super" => {
-                let module = self.r.module_arena.get(self.parent);
-                let parent = module.parent().unwrap();
+                let mut current = self.parent;
+                loop {
+                    let module = self.r.module_arena.get(current);
+                    match module.kind {
+                        ModuleKind::Def(_) => break,
+                        ModuleKind::Block => {
+                            current = module.parent().unwrap_or(current);
+                        }
+                    }
+                    if module.parent().is_none() {
+                        break;
+                    }
+                }
 
-                let mut current = parent;
+                let module = self.r.module_arena.get(current);
+                current = module.parent().unwrap_or(current);
                 let mut skip = 1;
 
                 for segment in segments.iter().skip(1) {
                     if segment.node.ident.node.name == "super" {
                         let module = self.r.module_arena.get(current);
-                        current = module.parent().unwrap_or(current);
+                        current = module.parent().expect("Add error if super goes beyond root");
                         skip += 1;
                     } else {
                         break;
@@ -270,7 +251,6 @@ impl<'a, 'r> LateResolver<'a, 'r> {
                     let parent = module.parent()?;
                     self.resolve_ident_in_module(parent, ident)
                 }
-                // TODO: maybe not in enums
                 ModuleKind::Def(_) => None,
             },
         }
@@ -297,7 +277,12 @@ impl<'a, 'r> LateResolver<'a, 'r> {
 
 impl<'a, 'r> visitor::Visitor for LateResolver<'a, 'r> {
     fn visit_item(&mut self, item: &AstNode<Item>) {
+        let orig_module = self.parent;
+        if let Some(module_id) = self.r.modules.get(&item.ast_id) {
+            self.parent = *module_id;
+        }
         self.with_rib(RibKind::Item, |this| visitor::walk_item(this, item));
+        self.parent = orig_module;
     }
 
     fn visit_let_stmt(&mut self, let_stmt: &AstNode<LetStmt>) {
@@ -315,32 +300,36 @@ impl<'a, 'r> visitor::Visitor for LateResolver<'a, 'r> {
         self.parent = orig_module;
     }
 
+    fn visit_pattern(&mut self, pattern: &AstNode<Pattern>) {
+        self.resolve_pattern(pattern, PatternSource::Normal);
+    }
+
     fn visit_path(&mut self, path: &AstNode<Path>) {
         self.resolve_path(path);
     }
 
     fn visit_expr(&mut self, expr: &AstNode<Expr>) {
-        match expr.node {
-            Expr::MethodCall(_) => {}
-            Expr::Tuple(_) => {}
-            Expr::Cast(_) => {}
-            Expr::Return(_) => {}
-            Expr::While(_) => {}
-            Expr::Loop(_) => {}
-            Expr::For(_) => {}
-            Expr::Assign(_) => {}
-            Expr::AssignOp(_) => {}
-            Expr::FieldAccess(_) => {}
-            Expr::Index(_) => {}
-            Expr::Path(_) => visitor::walk_expr(self, expr), // TODO: not sure if this is right
-            Expr::AddrOf(_) => {}
-            Expr::Break(_) => {}
-            Expr::Continue => {}
-            Expr::If(_) => {}
-            Expr::Block(_) => {}
-            Expr::Match(_) => {}
-            Expr::Let(_) => {}
-            Expr::Err => {}
+        match &expr.node {
+            Expr::For(for_expr) => {
+                self.visit_expr(&for_expr.iterator);
+                self.with_rib(RibKind::Local, |this| {
+                    this.resolve_pattern(&for_expr.pattern, PatternSource::Normal);
+                    this.visit_block(&for_expr.body);
+                });
+            }
+            Expr::Match(match_expr) => {
+                self.visit_expr(&match_expr.value);
+                for arm in &match_expr.arms {
+                    self.with_rib(RibKind::Local, |this| {
+                        this.resolve_pattern(&arm.node.pattern, PatternSource::Match);
+                        this.visit_expr(&arm.node.body);
+                    });
+                }
+            }
+            Expr::Let(let_expr) => {
+                self.visit_expr(&let_expr.value);
+                self.resolve_pattern(&let_expr.pattern, PatternSource::Match);
+            }
             _ => visitor::walk_expr(self, expr),
         }
     }
