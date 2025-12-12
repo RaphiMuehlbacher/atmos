@@ -1,12 +1,4 @@
-mod a {
-    mod b {
-        fn test() {}
-    }
-}
-
-mod c {
-    fn main() {
-        use super::a::b;
-        let b = b::test();
-    }
+fn main<T>(a: T) {
+    let a = 3;
+    let val = T.default();
 }

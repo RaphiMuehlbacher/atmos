@@ -6,7 +6,7 @@ use crate::parser::ast::{
     ArrayExpr, AssignExpr, AssignOp, AssignOpExpr, AssociatedItem, AstNode, BinOp, BinaryExpr, BlockExpr, BreakExpr,
     CallExpr, CastExpr, ConstDecl, Crate, EnumDecl, EnumVariant, Expr, ExternFnDecl, FieldAccessExpr, FnDecl, FnSig,
     ForExpr, GenericArg, GenericParam, GenericParamKind, Ident, IfExpr, ImplDecl, IndexExpr, Item, LetExpr, LetStmt,
-    LiteralExpr, LoopExpr, MatchArm, MatchExpr, ModDecl, Param, Path, PathExpr, PathSegment, Pattern,
+    LiteralExpr, LoopExpr, MatchArm, MatchExpr, MethodCallExpr, ModDecl, Param, Path, PathExpr, PathSegment, Pattern,
     PatternStructField, ReturnExpr, Stmt, StructDecl, StructExpr, StructExprField, StructFieldDef, TraitDecl,
     TupleExpr, Ty, TyAliasDecl, UnOp, UnaryExpr, UseItem, VariantData, WhileExpr,
 };
@@ -1084,14 +1084,41 @@ impl<'a> Parser<'a> {
 
                 TokenKind::Punctuation(Punct::Dot) => {
                     self.advance();
-                    let field = self.parse_ident()?;
-                    lhs = AstNode::new(
-                        Expr::FieldAccess(FieldAccessExpr {
-                            target: Box::new(lhs.clone()),
-                            field,
-                        }),
-                        lhs.span.to(self.previous().span),
-                    );
+                    let ident = self.parse_ident()?;
+
+                    if self.check(&[TokenKind::OpeningDelimiter(Delimiter::Paren)]) {
+                        let args = self.parse_separated_delimited(
+                            TokenKind::OpeningDelimiter(Delimiter::Paren),
+                            TokenKind::ClosingDelimiter(Delimiter::Paren),
+                            TokenKind::Punctuation(Punct::Comma),
+                            |p| p.parse_expression(),
+                        );
+
+                        let name = AstNode::new(
+                            PathSegment {
+                                ident: ident.clone(),
+                                args: vec![],
+                            },
+                            ident.span.to(self.previous().span),
+                        );
+
+                        lhs = AstNode::new(
+                            Expr::MethodCall(MethodCallExpr {
+                                name,
+                                receiver: Box::new(lhs.clone()),
+                                arguments: args,
+                            }),
+                            lhs.span.to(self.previous().span),
+                        );
+                    } else {
+                        lhs = AstNode::new(
+                            Expr::FieldAccess(FieldAccessExpr {
+                                target: Box::new(lhs.clone()),
+                                field: ident,
+                            }),
+                            lhs.span.to(self.previous().span),
+                        );
+                    }
                     continue;
                 }
 

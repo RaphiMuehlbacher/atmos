@@ -39,8 +39,11 @@ impl<'a, 'r> LateResolver<'a, 'r> {
     }
 
     fn insert_builtin_type(&mut self, name: &str) {
-        let ast_id = AstNode::err(Ident::new(name.to_string())).ast_id;
-        self.r.defs.insert(ast_id, DefKind::BuiltinType);
+        let ident = AstNode::err(Ident::new(name.to_string()));
+        let def_id = self.r.defs.insert(ident.ast_id, DefKind::BuiltinType);
+        self.r
+            .module_arena
+            .define(self.r.module_arena.root_id(), ident.node, Binding::Item(def_id));
     }
 
     fn innermost_rib(&mut self) -> &mut Rib {
