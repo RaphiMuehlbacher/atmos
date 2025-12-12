@@ -68,7 +68,6 @@ pub enum DefKind {
     TypeParam,
     TypeAlias,
     AssocTypeAlias,
-    BuiltinType,
 }
 
 impl From<&Item> for DefKind {

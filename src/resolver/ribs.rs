@@ -3,9 +3,32 @@ use crate::parser::AstId;
 use crate::resolver::defs::DefId;
 use std::collections::HashMap;
 
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum PrimTy {
+    I32,
+    U32,
+    F64,
+    Bool,
+    Str,
+}
+
+impl PrimTy {
+    pub fn from_name(name: &str) -> Option<PrimTy> {
+        match name {
+            "i32" => Some(PrimTy::I32),
+            "u32" => Some(PrimTy::U32),
+            "f64" => Some(PrimTy::F64),
+            "bool" => Some(PrimTy::Bool),
+            "str" => Some(PrimTy::Str),
+            _ => None,
+        }
+    }
+}
+
 pub enum Res {
     Local(AstId),
     Def(DefId),
+    PrimTy(PrimTy),
 }
 
 #[derive(Clone, PartialEq, Debug)]

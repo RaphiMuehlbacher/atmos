@@ -2,9 +2,9 @@ use crate::error::CompilerError;
 use crate::parser::ast::{AstNode, BlockExpr, Expr, Ident, Item, LetStmt, Path, PathSegment, Pattern};
 use crate::resolver::defs::DefKind;
 use crate::resolver::modules::{Binding, ModuleId, ModuleKind};
-use crate::resolver::ribs::{Res, Rib, RibKind};
-use crate::resolver::{ResolverError, visitor};
-use crate::{Resolver, visit_opt};
+use crate::resolver::ribs::{PrimTy, Res, Rib, RibKind};
+use crate::resolver::{visitor, ResolverError};
+use crate::{visit_opt, Resolver};
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum PatternSource {
@@ -20,30 +20,11 @@ pub struct LateResolver<'a, 'r> {
 
 impl<'a, 'r> LateResolver<'a, 'r> {
     pub fn new(r: &'a mut Resolver<'r>, root: ModuleId) -> Self {
-        let mut late_resolver = Self {
+        Self {
             r,
             ribs: vec![Rib::item()],
             parent: root,
-        };
-
-        late_resolver.insert_builtins();
-        late_resolver
-    }
-
-    fn insert_builtins(&mut self) {
-        let builtins = ["i32", "u32", "f64", "bool", "str"];
-
-        for builtin_name in builtins {
-            self.insert_builtin_type(builtin_name);
         }
-    }
-
-    fn insert_builtin_type(&mut self, name: &str) {
-        let ident = AstNode::err(Ident::new(name.to_string()));
-        let def_id = self.r.defs.insert(ident.ast_id, DefKind::BuiltinType);
-        self.r
-            .module_arena
-            .define(self.r.module_arena.root_id(), ident.node, Binding::Item(def_id));
     }
 
     fn innermost_rib(&mut self) -> &mut Rib {
@@ -82,10 +63,12 @@ impl<'a, 'r> LateResolver<'a, 'r> {
                     if matches!(source, PatternSource::Match) {
                         if let Some(res) = self.lookup_value(&name.node) {
                             match res {
-                                Res::Local(_) => todo!(),
-                                Res::Def(def_id) => self.r.defs.insert_ast_id(path.ast_id, def_id),
+                                Res::Local(_) | Res::PrimTy(_) => todo!("probably insert as binding for PrimTy"),
+                                Res::Def(def_id) => {
+                                    self.r.defs.insert_ast_id(path.ast_id, def_id);
+                                    return;
+                                }
                             }
-                            return;
                         }
                     }
                     self.define_binding(&name, pattern);
@@ -120,6 +103,11 @@ impl<'a, 'r> LateResolver<'a, 'r> {
     fn lookup_value(&self, ident: &Ident) -> Option<Res> {
         self.lookup_ribs(ident)
             .or_else(|| self.lookup_modules(ident, self.parent))
+            .or_else(|| self.lookup_prim_ty(ident))
+    }
+
+    fn lookup_prim_ty(&self, ident: &Ident) -> Option<Res> {
+        PrimTy::from_name(&ident.name).map(Res::PrimTy)
     }
 
     fn define_binding(&mut self, ident: &AstNode<Ident>, pattern: &AstNode<Pattern>) {
@@ -147,8 +135,8 @@ impl<'a, 'r> LateResolver<'a, 'r> {
             let first_ident = &segments[0].node.ident.node;
             if self.lookup_value(first_ident).is_none() {
                 self.report_unresolved_path(path);
-                return;
             }
+            return;
         }
 
         for (i, segment) in segments.iter().enumerate().skip(segment_start) {
