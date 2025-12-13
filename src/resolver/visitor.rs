@@ -301,7 +301,7 @@ pub fn walk_expr(visitor: &mut impl Visitor, expr: &AstNode<Expr>) {
             visit_opt!(visitor, visit_block, &if_expr.else_branch);
         }
         Expr::Block(block_expr) => {
-            let block_node = AstNode::new(block_expr.clone(), expr.span);
+            let block_node = AstNode::with_id(block_expr.clone(), expr.span, expr.ast_id);
             visitor.visit_block(&block_node);
         }
         Expr::Match(match_expr) => {
@@ -323,7 +323,7 @@ pub fn walk_stmt(visitor: &mut impl Visitor, stmt: &AstNode<Stmt>) {
     match &stmt.node {
         Stmt::Item(item) => visitor.visit_item(item),
         Stmt::Let(let_stmt) => {
-            let let_stmt_node = AstNode::new(let_stmt.clone(), stmt.span);
+            let let_stmt_node = AstNode::with_id(let_stmt.clone(), stmt.span, stmt.ast_id);
             visitor.visit_let_stmt(&let_stmt_node);
         }
         Stmt::Expr(expr) => visitor.visit_expr(expr),

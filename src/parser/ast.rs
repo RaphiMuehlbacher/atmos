@@ -21,6 +21,10 @@ impl<T> AstNode<T> {
         Self { node, span, ast_id }
     }
 
+    pub fn with_id(node: T, span: SourceSpan, ast_id: AstId) -> Self {
+        Self { node, span, ast_id }
+    }
+
     pub fn err(node: T) -> Self {
         AstNode::new(node, SourceSpan::err_span())
     }

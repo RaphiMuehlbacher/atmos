@@ -3,8 +3,10 @@ use crate::parser::ast::{AstNode, BlockExpr, Expr, Ident, Item, LetStmt, Path, P
 use crate::resolver::defs::DefKind;
 use crate::resolver::modules::{Binding, ModuleId, ModuleKind};
 use crate::resolver::ribs::{PrimTy, Res, Rib, RibKind};
+use crate::resolver::visitor::Visitor;
 use crate::resolver::{visitor, ResolverError};
 use crate::{visit_opt, Resolver};
+use std::collections::HashSet;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum PatternSource {
@@ -48,11 +50,21 @@ impl<'a, 'r> LateResolver<'a, 'r> {
     }
 
     fn resolve_pattern(&mut self, pattern: &AstNode<Pattern>, source: PatternSource) {
+        let mut pattern_bindings: HashSet<Ident> = HashSet::new();
+        self.resolve_pattern_inner(pattern, source, &mut pattern_bindings);
+    }
+
+    fn resolve_pattern_inner(
+        &mut self,
+        pattern: &AstNode<Pattern>,
+        source: PatternSource,
+        pattern_bindings: &mut HashSet<Ident>,
+    ) {
         match &pattern.node {
             Pattern::Or(patterns) => {
                 // TODO: All alternatives must bind the same names
                 for pat in patterns {
-                    self.resolve_pattern(pat, source);
+                    self.resolve_pattern_inner(pat, source, pattern_bindings);
                 }
             }
             Pattern::Path(path) => {
@@ -71,9 +83,41 @@ impl<'a, 'r> LateResolver<'a, 'r> {
                             }
                         }
                     }
+
+                    if !pattern_bindings.insert(name.node.clone()) {
+                        if self.innermost_rib().get(&name.node).is_some() {
+                            self.r.session.push_error(CompilerError::ResolverError(
+                                ResolverError::DuplicateDefinition {
+                                    src: self.r.session.get_named_source(),
+                                    span: name.span,
+                                    name: name.node.name.clone(),
+                                },
+                            ));
+                        }
+                    }
+
                     self.define_binding(&name, pattern);
                 } else {
                     self.resolve_path(path);
+                }
+            }
+            Pattern::Paren(pattern) => self.resolve_pattern_inner(pattern, source, pattern_bindings),
+            Pattern::Tuple(patterns) => {
+                for pattern in patterns {
+                    self.resolve_pattern_inner(pattern, source, pattern_bindings);
+                }
+            }
+            Pattern::TupleStruct(path, patterns) => {
+                self.visit_path(path);
+                for pattern in patterns {
+                    self.resolve_pattern_inner(pattern, source, pattern_bindings);
+                }
+            }
+            Pattern::Struct(path, struct_fields) => {
+                self.visit_path(path);
+                for field in struct_fields {
+                    self.visit_ident(&field.node.ident);
+                    self.resolve_pattern_inner(&field.node.pattern, source, pattern_bindings);
                 }
             }
             _ => visitor::walk_pattern(self, pattern),
@@ -111,15 +155,6 @@ impl<'a, 'r> LateResolver<'a, 'r> {
     }
 
     fn define_binding(&mut self, ident: &AstNode<Ident>, pattern: &AstNode<Pattern>) {
-        if self.innermost_rib().get(&ident.node).is_some() {
-            self.r
-                .session
-                .push_error(CompilerError::ResolverError(ResolverError::DuplicateDefinition {
-                    src: self.r.session.get_named_source(),
-                    span: ident.span,
-                    name: ident.node.name.clone(),
-                }));
-        }
         self.innermost_rib().insert(ident.node.clone(), pattern.ast_id);
     }
 
@@ -303,16 +338,13 @@ impl<'a, 'r> visitor::Visitor for LateResolver<'a, 'r> {
     }
 
     fn visit_let_stmt(&mut self, let_stmt: &AstNode<LetStmt>) {
-        self.with_rib(RibKind::Local, |this| {
-            this.resolve_pattern(&let_stmt.node.pat, PatternSource::Normal);
-            visit_opt!(this, visit_type, &let_stmt.node.type_annotation);
-            visit_opt!(this, visit_expr, &let_stmt.node.expr);
-        });
+        self.resolve_pattern(&let_stmt.node.pat, PatternSource::Normal);
+        visit_opt!(self, visit_type, &let_stmt.node.type_annotation);
+        visit_opt!(self, visit_expr, &let_stmt.node.expr);
     }
 
     fn visit_block(&mut self, block: &AstNode<BlockExpr>) {
         let orig_module = self.parent;
-        dbg!(block.ast_id);
         self.parent = *self.r.modules.get(&block.ast_id).unwrap();
         visitor::walk_block(self, block);
         self.parent = orig_module;
