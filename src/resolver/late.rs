@@ -181,7 +181,9 @@ impl<'a, 'r> LateResolver<'a, 'r> {
         }
 
         let segments = &path.node.segments;
-        let (mut current_module, segment_start) = self.resolve_first_segment(segments);
+        let Some((mut current_module, segment_start)) = self.resolve_first_segment(segments) else {
+            return;
+        };
 
         if segments.len() == 1 && segment_start == 0 {
             let first_ident = &segments[0].node.ident.node;
@@ -263,18 +265,18 @@ impl<'a, 'r> LateResolver<'a, 'r> {
             }
         }
 
-        if let ModuleKind::Def(def_id) = self.r.module_arena.get(current_module).kind {
-            self.r.defs.insert_ast_id(path.ast_id, def_id);
-        } else {
-            todo!("emit error")
-        }
+        let ModuleKind::Def(def_id) = self.r.module_arena.get(current_module).kind else {
+            unreachable!();
+        };
+
+        self.r.defs.insert_ast_id(path.ast_id, def_id);
     }
 
-    fn resolve_first_segment(&self, segments: &[AstNode<PathSegment>]) -> (ModuleId, usize) {
+    fn resolve_first_segment(&mut self, segments: &[AstNode<PathSegment>]) -> Option<(ModuleId, usize)> {
         let first_ident = &segments[0].node.ident.node;
 
         match first_ident.name.as_str() {
-            "crate" => (self.r.module_arena.root_id(), 1),
+            "crate" => Some((self.r.module_arena.root_id(), 1)),
             "super" => {
                 let mut current = self.parent;
                 loop {
@@ -291,23 +293,41 @@ impl<'a, 'r> LateResolver<'a, 'r> {
                 }
 
                 let module = self.r.module_arena.get(current);
-                current = module.parent().unwrap_or(current);
+                let Some(parent) = module.parent() else {
+                    self.r
+                        .session
+                        .push_error(CompilerError::ResolverError(ResolverError::SuperBeyondRoot {
+                            src: self.r.session.get_named_source(),
+                            span: segments[0].span,
+                        }));
+                    return None;
+                };
+                current = parent;
                 let mut skip = 1;
 
                 for segment in segments.iter().skip(1) {
                     if segment.node.ident.node.name == "super" {
                         let module = self.r.module_arena.get(current);
-                        current = module.parent().expect("Add error if super goes beyond root");
+                        let Some(parent) = module.parent() else {
+                            self.r
+                                .session
+                                .push_error(CompilerError::ResolverError(ResolverError::SuperBeyondRoot {
+                                    src: self.r.session.get_named_source(),
+                                    span: segment.span,
+                                }));
+                            return None;
+                        };
+                        current = parent;
                         skip += 1;
                     } else {
                         break;
                     }
                 }
 
-                (current, skip)
+                Some((current, skip))
             }
-            "self" => (self.parent, 1),
-            _ => (self.parent, 0),
+            "self" => Some((self.parent, 1)),
+            _ => Some((self.parent, 0)),
         }
     }
 

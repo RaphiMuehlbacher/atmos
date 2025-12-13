@@ -57,4 +57,13 @@ pub enum ResolverError {
 
         path: String,
     },
+    #[error("there are too many leading `super` keywords")]
+    #[diagnostic(code(resolver::super_beyond_root))]
+    SuperBeyondRoot {
+        #[source_code]
+        src: NamedSource<String>,
+
+        #[label("beyond crate root")]
+        span: SourceSpan,
+    },
 }

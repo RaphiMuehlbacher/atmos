@@ -1,15 +1,7 @@
-enum Option<T> {
-    Some(T),
-    None,
-    Other(T)
+mod a {
+    mod b {}
 }
 
 fn main() {
-    let a = Option::Some(3);
-
-    match a {
-        Option::Some(b) | Option::Other(a) => {},
-        Option::None => 3,
-    };
+    let a = super::a::c;
 }
-
