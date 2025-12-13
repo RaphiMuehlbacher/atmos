@@ -15,10 +15,16 @@ use crate::Session;
 
 type PResult<T> = Result<T, ParserError>;
 
+#[derive(Clone, Copy, Default)]
+struct Restrictions {
+    forbid_struct_expr: bool,
+}
+
 pub struct Parser<'a> {
     session: &'a Session,
     tokens: Vec<Token>,
     position: usize,
+    restrictions: Restrictions,
 }
 
 impl<'a> Parser<'a> {
@@ -70,6 +76,17 @@ impl<'a> Parser<'a> {
             }
         }
         false
+    }
+
+    fn with_restrictions<T, F>(&mut self, restrictions: Restrictions, f: F) -> T
+    where
+        F: FnOnce(&mut Self) -> T,
+    {
+        let old = self.restrictions;
+        self.restrictions = restrictions;
+        let result = f(self);
+        self.restrictions = old;
+        result
     }
 }
 
@@ -303,6 +320,7 @@ impl<'a> Parser<'a> {
             session,
             tokens,
             position: 0,
+            restrictions: Restrictions::default(),
         }
     }
 
@@ -1308,7 +1326,8 @@ impl<'a> Parser<'a> {
             }
             TokenKind::Ident(_) => {
                 let path = self.parse_path()?;
-                if self.check(&[TokenKind::OpeningDelimiter(Delimiter::Brace)]) {
+                if !self.restrictions.forbid_struct_expr && self.check(&[TokenKind::OpeningDelimiter(Delimiter::Brace)])
+                {
                     Expr::Struct(self.parse_struct_expr(path)?.node)
                 } else {
                     Expr::Path(PathExpr { path })
@@ -1393,7 +1412,12 @@ impl<'a> Parser<'a> {
         let lo = self.current().span;
         self.advance();
 
-        let condition = self.parse_expression()?;
+        let condition = self.with_restrictions(
+            Restrictions {
+                forbid_struct_expr: true,
+            },
+            |p| p.parse_expression(),
+        )?;
         let then_branch = self.parse_block()?;
 
         let else_branch = if self.consume(&[TokenKind::Keyword(Kw::Else)]) {
@@ -1416,7 +1440,12 @@ impl<'a> Parser<'a> {
         let lo = self.current().span;
         self.advance();
 
-        let condition = self.parse_expression()?;
+        let condition = self.with_restrictions(
+            Restrictions {
+                forbid_struct_expr: true,
+            },
+            |p| p.parse_expression(),
+        )?;
         let body = self.parse_block()?;
 
         Ok(AstNode::new(
@@ -1448,7 +1477,12 @@ impl<'a> Parser<'a> {
 
         self.consume(&[TokenKind::Keyword(Kw::In)]);
 
-        let iterator = self.parse_expression()?;
+        let iterator = self.with_restrictions(
+            Restrictions {
+                forbid_struct_expr: true,
+            },
+            |p| p.parse_expression(),
+        )?;
         let body = self.parse_block()?;
 
         Ok(AstNode::new(
@@ -1465,7 +1499,12 @@ impl<'a> Parser<'a> {
         let lo = self.current().span;
         self.advance();
 
-        let expr = self.parse_expression()?;
+        let expr = self.with_restrictions(
+            Restrictions {
+                forbid_struct_expr: true,
+            },
+            |p| p.parse_expression(),
+        )?;
 
         let arms = self.parse_separated_delimited(
             TokenKind::OpeningDelimiter(Delimiter::Brace),

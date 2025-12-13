@@ -1,33 +1,12 @@
-fn func() -> i32 {}
-struct Flag;
-struct Person {
-    age: i32,
-    name: str,
-}
-struct WrapStr(str);
-
-enum Color {
-    Monochrome,
-    Foreground(i32, i32, i32),
-    Mix {
-        hex: str,
-        rgb: str,
-    }
+enum Option<T> {
+    Some(T),
+    None,
 }
 
 fn main() {
-    let function = func();
-    let flag = Flag;
-    let p = Person {
-        age: 18,
-        name: "Raphael",
-    };
-
-    let s = WrapStr("hi");
-    let mono = Color::Monochrome;
-    let red = Color::Foreground(255, 0, 0);
-    let mix = Color::Mix {
-        hex: "234",
-        rbg: "523"
+    let a = Option::Some(3);
+    match a {
+        Some(b) => {},
+        None => 3,
     };
 }

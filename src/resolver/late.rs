@@ -312,6 +312,7 @@ impl<'a, 'r> visitor::Visitor for LateResolver<'a, 'r> {
 
     fn visit_block(&mut self, block: &AstNode<BlockExpr>) {
         let orig_module = self.parent;
+        dbg!(block.ast_id);
         self.parent = *self.r.modules.get(&block.ast_id).unwrap();
         visitor::walk_block(self, block);
         self.parent = orig_module;
