@@ -1,3 +1,5 @@
+#![allow(unused)]
+
 use miette::{Diagnostic, NamedSource, SourceSpan};
 use thiserror::Error;
 
@@ -13,10 +15,7 @@ pub enum LexerError {
     },
 
     #[error("Unexpected character: {character}")]
-    #[diagnostic(
-        help("This character isn't recognized by the lexer."),
-        code(lexer::unexpected_char)
-    )]
+    #[diagnostic(help("This character isn't recognized by the lexer."), code(lexer::unexpected_char))]
     UnexpectedCharacter {
         #[source_code]
         src: NamedSource<String>,

@@ -1259,7 +1259,7 @@ impl<'a> Parser<'a> {
                 span,
             )),
 
-            _ => Err(todo!()),
+            _ => todo!(),
         }
     }
 

@@ -1,3 +1,5 @@
+#![allow(unused)]
+
 use crate::lexer::TokenKind;
 use miette::{Diagnostic, NamedSource, SourceSpan};
 use thiserror::Error;
