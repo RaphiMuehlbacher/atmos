@@ -1,13 +1,14 @@
 enum Option<T> {
     Some(T),
     None,
+    Other(T)
 }
 
 fn main() {
     let a = Option::Some(3);
 
     match a {
-        Option::Some(b) => {},
+        Option::Some(b) | Option::Other(a) => {},
         Option::None => 3,
     };
 }

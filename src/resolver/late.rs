@@ -62,9 +62,26 @@ impl<'a, 'r> LateResolver<'a, 'r> {
     ) {
         match &pattern.node {
             Pattern::Or(patterns) => {
-                // TODO: All alternatives must bind the same names
-                for pat in patterns {
-                    self.resolve_pattern_inner(pat, source, pattern_bindings);
+                let mut first_bindings: Option<HashSet<Ident>> = None;
+
+                for pattern in patterns {
+                    let mut alt_bindings = HashSet::new();
+                    self.resolve_pattern_inner(pattern, source, &mut alt_bindings);
+                    match &first_bindings {
+                        None => first_bindings = Some(alt_bindings.clone()),
+                        Some(expected) => {
+                            for ident in expected.difference(&alt_bindings) {
+                                self.r.session.push_error(CompilerError::ResolverError(
+                                    ResolverError::VariableNotBoundInPattern {
+                                        src: self.r.session.get_named_source(),
+                                        span: pattern.span,
+                                        name: ident.name.clone(),
+                                    },
+                                ));
+                            }
+                        }
+                    }
+                    pattern_bindings.extend(alt_bindings);
                 }
             }
             Pattern::Path(path) => {
@@ -75,7 +92,7 @@ impl<'a, 'r> LateResolver<'a, 'r> {
                     if matches!(source, PatternSource::Match) {
                         if let Some(res) = self.lookup_value(&name.node) {
                             match res {
-                                Res::Local(_) | Res::PrimTy(_) => todo!("probably insert as binding for PrimTy"),
+                                Res::Local(_) | Res::PrimTy(_) => {}
                                 Res::Def(def_id) => {
                                     self.r.defs.insert_ast_id(path.ast_id, def_id);
                                     return;
@@ -108,13 +125,13 @@ impl<'a, 'r> LateResolver<'a, 'r> {
                 }
             }
             Pattern::TupleStruct(path, patterns) => {
-                self.visit_path(path);
+                self.resolve_path(path);
                 for pattern in patterns {
                     self.resolve_pattern_inner(pattern, source, pattern_bindings);
                 }
             }
             Pattern::Struct(path, struct_fields) => {
-                self.visit_path(path);
+                self.resolve_path(path);
                 for field in struct_fields {
                     self.visit_ident(&field.node.ident);
                     self.resolve_pattern_inner(&field.node.pattern, source, pattern_bindings);
@@ -327,7 +344,7 @@ impl<'a, 'r> LateResolver<'a, 'r> {
     }
 }
 
-impl<'a, 'r> visitor::Visitor for LateResolver<'a, 'r> {
+impl<'a, 'r> Visitor for LateResolver<'a, 'r> {
     fn visit_item(&mut self, item: &AstNode<Item>) {
         let orig_module = self.parent;
         if let Some(module_id) = self.r.modules.get(&item.ast_id) {

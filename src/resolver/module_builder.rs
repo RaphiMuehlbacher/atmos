@@ -143,11 +143,26 @@ impl<'a, 'r> visitor::Visitor for ModuleBuilder<'a, 'r> {
         self.parent = parent;
     }
 
+    fn visit_block(&mut self, block: &AstNode<BlockExpr>) {
+        let module = self.r.module_arena.add_module(self.parent, ModuleKind::Block);
+        self.r.modules.insert(block.ast_id, module);
+        visitor::walk_block(self, block);
+    }
+
     fn visit_generic_param(&mut self, generic_param: &AstNode<GenericParam>) {
         let def_id = self.r.defs.get_def_from_ast(generic_param.ast_id).unwrap();
         self.r.module_arena.define(
             self.parent,
             generic_param.node.ident.node.clone(),
+            Binding::Item(*def_id),
+        );
+    }
+
+    fn visit_enum_variant(&mut self, enum_variant: &AstNode<EnumVariant>) {
+        let def_id = self.r.defs.get_def_from_ast(enum_variant.ast_id).unwrap();
+        self.r.module_arena.define(
+            self.parent,
+            enum_variant.node.ident.node.clone(),
             Binding::Item(*def_id),
         );
     }
@@ -160,20 +175,5 @@ impl<'a, 'r> visitor::Visitor for ModuleBuilder<'a, 'r> {
 
         let def_id = self.r.defs.get_def_from_ast(assoc_item.ast_id).unwrap();
         self.r.module_arena.define(self.parent, ident, Binding::Item(*def_id))
-    }
-
-    fn visit_enum_variant(&mut self, enum_variant: &AstNode<EnumVariant>) {
-        let def_id = self.r.defs.get_def_from_ast(enum_variant.ast_id).unwrap();
-        self.r.module_arena.define(
-            self.parent,
-            enum_variant.node.ident.node.clone(),
-            Binding::Item(*def_id),
-        );
-    }
-
-    fn visit_block(&mut self, block: &AstNode<BlockExpr>) {
-        let module = self.r.module_arena.add_module(self.parent, ModuleKind::Block);
-        self.r.modules.insert(block.ast_id, module);
-        visitor::walk_block(self, block);
     }
 }

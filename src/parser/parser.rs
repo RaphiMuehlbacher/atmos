@@ -299,20 +299,6 @@ impl<'a> Parser<'a> {
         }
         AstNode::err(Item::Err)
     }
-
-    fn recover_stmt(&mut self) -> AstNode<Stmt> {
-        while !self.at_eof() && !self.token_ends_stmt() {
-            self.advance();
-        }
-        AstNode::err(Stmt::Err)
-    }
-
-    fn token_ends_stmt(&self) -> bool {
-        matches!(
-            self.current().kind,
-            TokenKind::Punctuation(Punct::Semicolon) | TokenKind::ClosingDelimiter(Delimiter::Brace)
-        )
-    }
 }
 impl<'a> Parser<'a> {
     pub fn new(session: &'a Session, tokens: Vec<Token>) -> Self {

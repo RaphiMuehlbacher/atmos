@@ -32,7 +32,20 @@ pub enum ResolverError {
 
         name: String,
     },
+    #[error("Variable `{name}` is not bound in all alternatives")]
+    #[diagnostic(
+        code(resolver::variable_not_bound_in_pattern),
+        help("Ensure `{name}` is bound in every alternative of the or-pattern")
+    )]
+    VariableNotBoundInPattern {
+        #[source_code]
+        src: NamedSource<String>,
 
+        #[label("variable not bound in this alternative")]
+        span: SourceSpan,
+
+        name: String,
+    },
     #[error("Cannot resolve path `{path}`")]
     #[diagnostic(code(resolver::unresolved_path))]
     UnresolvedPath {
