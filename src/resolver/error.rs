@@ -66,4 +66,28 @@ pub enum ResolverError {
         #[label("beyond crate root")]
         span: SourceSpan,
     },
+    #[error("`Self` is only available in impls, traits, and type definitions")]
+    #[diagnostic(
+        code(resolver::self_outside_impl),
+        help("`Self` can only be used inside `impl` blocks, `trait` definitions, or type definitions")
+    )]
+    SelfOutsideImpl {
+        #[source_code]
+        src: NamedSource<String>,
+
+        #[label("`Self` is not valid here")]
+        span: SourceSpan,
+    },
+    #[error("`Self` cannot be used as a binding")]
+    #[diagnostic(
+        code(resolver::self_as_binding),
+        help("`Self` is reserved for referring to the implementing type")
+    )]
+    SelfAsBinding {
+        #[source_code]
+        src: NamedSource<String>,
+
+        #[label("cannot bind to `Self`")]
+        span: SourceSpan,
+    },
 }

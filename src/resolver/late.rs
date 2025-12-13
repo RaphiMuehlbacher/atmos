@@ -1,8 +1,8 @@
 use crate::error::CompilerError;
-use crate::parser::ast::{AstNode, BlockExpr, Expr, Ident, Item, LetStmt, Path, PathSegment, Pattern};
-use crate::resolver::defs::DefKind;
+use crate::parser::ast::{AstNode, BlockExpr, Expr, Ident, Item, LetStmt, Path, PathSegment, Pattern, Ty};
+use crate::resolver::defs::{DefId, DefKind};
 use crate::resolver::modules::{Binding, ModuleId, ModuleKind};
-use crate::resolver::ribs::{PrimTy, Res, Rib, RibKind};
+use crate::resolver::ribs::{PrimTy, Res, Rib, RibKind, SelfTyInfo};
 use crate::resolver::visitor::Visitor;
 use crate::resolver::{visitor, ResolverError};
 use crate::{visit_opt, Resolver};
@@ -18,6 +18,7 @@ pub struct LateResolver<'a, 'r> {
     r: &'a mut Resolver<'r>,
     ribs: Vec<Rib>,
     parent: ModuleId,
+    self_ty_info: Option<SelfTyInfo>,
 }
 
 impl<'a, 'r> LateResolver<'a, 'r> {
@@ -26,6 +27,7 @@ impl<'a, 'r> LateResolver<'a, 'r> {
             r,
             ribs: vec![Rib::item()],
             parent: root,
+            self_ty_info: None,
         }
     }
 
@@ -89,10 +91,20 @@ impl<'a, 'r> LateResolver<'a, 'r> {
                     let segment = &path.node.segments[0];
                     let name = &segment.node.ident;
 
+                    if name.node.name == "Self" {
+                        self.r
+                            .session
+                            .push_error(CompilerError::ResolverError(ResolverError::SelfAsBinding {
+                                src: self.r.session.get_named_source(),
+                                span: name.span,
+                            }));
+                        return;
+                    }
+
                     if matches!(source, PatternSource::Match) {
                         if let Some(res) = self.lookup_value(&name.node) {
                             match res {
-                                Res::Local(_) | Res::PrimTy(_) => {}
+                                Res::Local(_) | Res::PrimTy(_) | Res::SelfTy(_) => {}
                                 Res::Def(def_id) => {
                                     self.r.defs.insert_ast_id(path.ast_id, def_id);
                                     return;
@@ -173,6 +185,21 @@ impl<'a, 'r> LateResolver<'a, 'r> {
 
     fn define_binding(&mut self, ident: &AstNode<Ident>, pattern: &AstNode<Pattern>) {
         self.innermost_rib().insert(ident.node.clone(), pattern.ast_id);
+    }
+
+    fn get_def_from_ty(&self, ty: &AstNode<Ty>) -> Option<DefId> {
+        match &ty.node {
+            Ty::Path(path) => {
+                if path.node.segments.len() == 1 {
+                    let ident = &path.node.segments[0].node.ident.node;
+                    if let Some(Res::Def(def_id)) = self.lookup_modules(ident, self.parent) {
+                        return Some(def_id);
+                    }
+                }
+                self.r.defs.get_def_from_ast(path.ast_id).copied()
+            }
+            _ => None,
+        }
     }
 
     fn resolve_path(&mut self, path: &AstNode<Path>) {
@@ -367,11 +394,52 @@ impl<'a, 'r> LateResolver<'a, 'r> {
 impl<'a, 'r> Visitor for LateResolver<'a, 'r> {
     fn visit_item(&mut self, item: &AstNode<Item>) {
         let orig_module = self.parent;
+        let orig_self_ty_info = self.self_ty_info;
+
         if let Some(module_id) = self.r.modules.get(&item.ast_id) {
             self.parent = *module_id;
         }
+
+        match &item.node {
+            Item::Impl(impl_decl) => {
+                let impl_def_id = self.r.defs.get_def_from_ast(item.ast_id).copied();
+                if let Some(impl_def) = impl_def_id {
+                    let self_ty_def = self.get_def_from_ty(&impl_decl.self_ty);
+                    let trait_def = impl_decl
+                        .for_trait
+                        .as_ref()
+                        .and_then(|path| self.r.defs.get_def_from_ast(path.ast_id).copied());
+                    self.self_ty_info = Some(SelfTyInfo {
+                        self_ty_def,
+                        trait_def,
+                        impl_or_trait_def: impl_def,
+                    });
+                }
+            }
+            Item::Trait(_) => {
+                if let Some(trait_def) = self.r.defs.get_def_from_ast(item.ast_id).copied() {
+                    self.self_ty_info = Some(SelfTyInfo {
+                        self_ty_def: None,
+                        trait_def: Some(trait_def),
+                        impl_or_trait_def: trait_def,
+                    });
+                }
+            }
+            Item::Struct(_) | Item::Enum(_) | Item::TyAlias(_) => {
+                if let Some(def_id) = self.r.defs.get_def_from_ast(item.ast_id).copied() {
+                    self.self_ty_info = Some(SelfTyInfo {
+                        self_ty_def: Some(def_id),
+                        trait_def: None,
+                        impl_or_trait_def: def_id,
+                    });
+                }
+            }
+            _ => {}
+        }
+
         self.with_rib(RibKind::Item, |this| visitor::walk_item(this, item));
         self.parent = orig_module;
+        self.self_ty_info = orig_self_ty_info;
     }
 
     fn visit_let_stmt(&mut self, let_stmt: &AstNode<LetStmt>) {
@@ -392,10 +460,37 @@ impl<'a, 'r> Visitor for LateResolver<'a, 'r> {
     }
 
     fn visit_path(&mut self, path: &AstNode<Path>) {
-        self.resolve_path(path);
+        if path.node.segments.is_empty() {
+            return;
+        }
+
+        let first_segment = &path.node.segments[0];
+        if first_segment.node.ident.node.name == "Self" {
+            if self.self_ty_info.is_none() {
+                self.r
+                    .session
+                    .push_error(CompilerError::ResolverError(ResolverError::SelfOutsideImpl {
+                        src: self.r.session.get_named_source(),
+                        span: first_segment.span,
+                    }));
+            }
+
+        for arg in &first_segment.node.args {
+            visitor::walk_generic_arg(self, arg);
+        }
+        for segment in path.node.segments.iter().skip(1) {
+            for arg in &segment.node.args {
+                visitor::walk_generic_arg(self, arg);
+            }
+        }
+        return;
     }
 
-    fn visit_expr(&mut self, expr: &AstNode<Expr>) {
+
+self .resolve_path(path);
+}
+
+fn visit_expr(&mut self, expr: &AstNode<Expr>) {
         match &expr.node {
             Expr::For(for_expr) => {
                 self.visit_expr(&for_expr.iterator);

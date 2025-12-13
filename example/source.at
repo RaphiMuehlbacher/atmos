@@ -1,10 +1,24 @@
-struct Person {
-    age: i32,
+struct Person<T> {
+    age: T,
 }
 
-impl Person {
-    fn new(age: i32) -> Person {
-        Person { age: age }
+impl<T: Debug> Person<T> {
+    fn new(age: T) -> Self {
+        Self { age: age }
+    }
+
+    fn create() -> Self {
+        Self::new(3)
+    }
+}
+
+trait Debug {
+    fn debug(self: Self) -> str;
+}
+
+impl Debug for Person {
+    fn debug(self: Self) -> str {
+        "hi"
     }
 }
 

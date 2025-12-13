@@ -25,10 +25,21 @@ impl PrimTy {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub struct SelfTyInfo {
+    /// The DefId of the type that Self refers to (struct, enum, or type alias in impl/trait)
+    pub self_ty_def: Option<DefId>,
+    /// If inside a trait impl, the DefId of the trait being implemented
+    pub trait_def: Option<DefId>,
+    /// The DefId of the impl or trait block itself
+    pub impl_or_trait_def: DefId,
+}
+
 pub enum Res {
     Local(AstId),
     Def(DefId),
     PrimTy(PrimTy),
+    SelfTy(SelfTyInfo),
 }
 
 #[derive(Clone, PartialEq, Debug)]

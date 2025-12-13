@@ -240,7 +240,7 @@ impl Display for Kw {
             Kw::Where => "where",
             Kw::Extern => "extern",
             Kw::Const => "const",
-            Kw::Unit => "unit",
+            Kw::Unit => "()",
         };
         write!(f, "{}", s)
     }
