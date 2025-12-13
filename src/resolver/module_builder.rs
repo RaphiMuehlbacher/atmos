@@ -174,6 +174,7 @@ impl<'a, 'r> visitor::Visitor for ModuleBuilder<'a, 'r> {
         };
 
         let def_id = self.r.defs.get_def_from_ast(assoc_item.ast_id).unwrap();
-        self.r.module_arena.define(self.parent, ident, Binding::Item(*def_id))
+        self.r.module_arena.define(self.parent, ident, Binding::Item(*def_id));
+        visitor::walk_assoc_item(self, assoc_item);
     }
 }

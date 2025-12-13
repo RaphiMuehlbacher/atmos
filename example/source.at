@@ -1,7 +1,14 @@
-mod a {
-    mod b {}
+struct Person {
+    age: i32,
 }
 
+impl Person {
+    fn new(age: i32) -> Person {
+        Person { age: age }
+    }
+}
+
+
 fn main() {
-    let a = super::a::c;
+    let person = Person::new(3);
 }
