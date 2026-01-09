@@ -1,7 +1,7 @@
 use crate::parser::ast::Crate;
 use crate::parser::AstId;
 use crate::resolver::collect_defs::DefCollector;
-use crate::resolver::defs::DefinitionMap;
+use crate::resolver::defs::{DefId, DefinitionMap};
 use crate::resolver::imports::ImportResolver;
 use crate::resolver::late::LateResolver;
 use crate::resolver::module_builder::{ModuleArena, ModuleBuilder};
@@ -33,11 +33,13 @@ impl<'ast> Resolver<'ast> {
         }
     }
 
-    pub fn resolve(&mut self) {
+    pub fn resolve(&mut self) -> &HashMap<AstId, DefId> {
         self.collect_definitions(self.ast_program);
         self.build_modules(self.ast_program);
         self.resolve_imports();
         self.resolve_crate(&self.ast_program);
+
+        &self.defs.ast_to_def
     }
 
     fn collect_definitions(&mut self, krate: &Crate) {

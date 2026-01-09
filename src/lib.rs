@@ -1,3 +1,4 @@
+pub mod ast_lowerer;
 pub mod error;
 pub mod extension;
 pub mod lexer;

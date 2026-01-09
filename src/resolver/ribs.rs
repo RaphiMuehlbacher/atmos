@@ -3,7 +3,7 @@ use crate::parser::AstId;
 use crate::resolver::defs::DefId;
 use std::collections::HashMap;
 
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum PrimTy {
     I32,
     U32,
@@ -35,6 +35,7 @@ pub struct SelfTyInfo {
     pub impl_or_trait_def: DefId,
 }
 
+#[derive(Clone, PartialEq, Debug)]
 pub enum Res {
     Local(AstId),
     Def(DefId),

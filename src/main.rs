@@ -1,3 +1,4 @@
+use atmos::ast_lowerer::AstLowerer;
 use atmos::{Lexer, Parser, Resolver, Session};
 use miette::{GraphicalReportHandler, NamedSource};
 use std::fs;
@@ -16,7 +17,10 @@ fn main() {
     let ast = parser.parse_crate();
 
     let mut resolver = Resolver::new(&session, &ast);
-    resolver.resolve();
+    let ast_to_def = resolver.resolve();
+
+    let mut ast_lowerer = AstLowerer::new(&session, ast_to_def, &ast);
+    let hir = ast_lowerer.lower();
 
     session.emit_all();
 }
