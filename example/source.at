@@ -1,28 +1,2 @@
-struct Person<T> {
-    age: T,
-}
-
-impl<T: Debug> Person<T> {
-    fn new(age: T) -> Self {
-        Self { age: age }
-    }
-
-    fn create() -> Self {
-        Self::new(3)
-    }
-}
-
-trait Debug {
-    fn debug(self: Self) -> str;
-}
-
-impl Debug for Person {
-    fn debug(self: Self) -> str {
-        "hi"
-    }
-}
-
-
 fn main() {
-    let person = Person::new(3);
 }

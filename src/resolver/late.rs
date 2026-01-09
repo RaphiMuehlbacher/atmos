@@ -1,13 +1,11 @@
 use crate::error::CompilerError;
-use crate::parser::ast::{
-    AstNode, BlockExpr, Expr, Ident, Item, LetStmt, Path, PathSegment, Pattern, Ty,
-};
+use crate::parser::ast::{AstNode, BlockExpr, Expr, Ident, Item, LetStmt, Path, PathSegment, Pattern, Ty};
 use crate::resolver::defs::{DefId, DefKind};
 use crate::resolver::modules::{Binding, ModuleId, ModuleKind};
 use crate::resolver::ribs::{PrimTy, Res, Rib, RibKind, SelfTyInfo};
 use crate::resolver::visitor::Visitor;
-use crate::resolver::{ResolverError, visitor};
-use crate::{Resolver, visit_opt};
+use crate::resolver::{visitor, ResolverError};
+use crate::{visit_opt, Resolver};
 use std::collections::HashSet;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -94,12 +92,12 @@ impl<'a, 'r> LateResolver<'a, 'r> {
                     let name = &segment.node.ident;
 
                     if name.node.name == "Self" {
-                        self.r.session.push_error(CompilerError::ResolverError(
-                            ResolverError::SelfAsBinding {
+                        self.r
+                            .session
+                            .push_error(CompilerError::ResolverError(ResolverError::SelfAsBinding {
                                 src: self.r.session.get_named_source(),
                                 span: name.span,
-                            },
-                        ));
+                            }));
                         return;
                     }
 
@@ -132,9 +130,7 @@ impl<'a, 'r> LateResolver<'a, 'r> {
                     self.resolve_path(path);
                 }
             }
-            Pattern::Paren(pattern) => {
-                self.resolve_pattern_inner(pattern, source, pattern_bindings)
-            }
+            Pattern::Paren(pattern) => self.resolve_pattern_inner(pattern, source, pattern_bindings),
             Pattern::Tuple(patterns) => {
                 for pattern in patterns {
                     self.resolve_pattern_inner(pattern, source, pattern_bindings);
@@ -188,8 +184,7 @@ impl<'a, 'r> LateResolver<'a, 'r> {
     }
 
     fn define_binding(&mut self, ident: &AstNode<Ident>, pattern: &AstNode<Pattern>) {
-        self.innermost_rib()
-            .insert(ident.node.clone(), pattern.ast_id);
+        self.innermost_rib().insert(ident.node.clone(), pattern.ast_id);
     }
 
     fn get_def_from_ty(&self, ty: &AstNode<Ty>) -> Option<DefId> {
@@ -219,8 +214,9 @@ impl<'a, 'r> LateResolver<'a, 'r> {
 
         if segments.len() == 1 && segment_start == 0 {
             let first_ident = &segments[0].node.ident.node;
-            if self.lookup_value(first_ident).is_none() {
-                self.report_unresolved_path(path);
+            match self.lookup_value(first_ident) {
+                None => self.report_unresolved_path(path),
+                Some(res) => self.r.defs.insert_resolution(path.ast_id, res),
             }
             return;
         }
@@ -304,10 +300,7 @@ impl<'a, 'r> LateResolver<'a, 'r> {
         self.r.defs.insert_ast_id(path.ast_id, def_id);
     }
 
-    fn resolve_first_segment(
-        &mut self,
-        segments: &[AstNode<PathSegment>],
-    ) -> Option<(ModuleId, usize)> {
+    fn resolve_first_segment(&mut self, segments: &[AstNode<PathSegment>]) -> Option<(ModuleId, usize)> {
         let first_ident = &segments[0].node.ident.node;
 
         match first_ident.name.as_str() {
@@ -329,12 +322,12 @@ impl<'a, 'r> LateResolver<'a, 'r> {
 
                 let module = self.r.module_arena.get(current);
                 let Some(parent) = module.parent() else {
-                    self.r.session.push_error(CompilerError::ResolverError(
-                        ResolverError::SuperBeyondRoot {
+                    self.r
+                        .session
+                        .push_error(CompilerError::ResolverError(ResolverError::SuperBeyondRoot {
                             src: self.r.session.get_named_source(),
                             span: segments[0].span,
-                        },
-                    ));
+                        }));
                     return None;
                 };
                 current = parent;
@@ -344,12 +337,12 @@ impl<'a, 'r> LateResolver<'a, 'r> {
                     if segment.node.ident.node.name == "super" {
                         let module = self.r.module_arena.get(current);
                         let Some(parent) = module.parent() else {
-                            self.r.session.push_error(CompilerError::ResolverError(
-                                ResolverError::SuperBeyondRoot {
+                            self.r
+                                .session
+                                .push_error(CompilerError::ResolverError(ResolverError::SuperBeyondRoot {
                                     src: self.r.session.get_named_source(),
                                     span: segment.span,
-                                },
-                            ));
+                                }));
                             return None;
                         };
                         current = parent;
@@ -389,13 +382,13 @@ impl<'a, 'r> LateResolver<'a, 'r> {
             .collect::<Vec<_>>()
             .join("::");
 
-        self.r.session.push_error(CompilerError::ResolverError(
-            ResolverError::UnresolvedPath {
+        self.r
+            .session
+            .push_error(CompilerError::ResolverError(ResolverError::UnresolvedPath {
                 src: self.r.session.get_named_source(),
                 span: path.span,
                 path: path_str,
-            },
-        ));
+            }));
     }
 }
 
@@ -475,12 +468,12 @@ impl<'a, 'r> Visitor for LateResolver<'a, 'r> {
         let first_segment = &path.node.segments[0];
         if first_segment.node.ident.node.name == "Self" {
             if self.self_ty_info.is_none() {
-                self.r.session.push_error(CompilerError::ResolverError(
-                    ResolverError::SelfOutsideImpl {
+                self.r
+                    .session
+                    .push_error(CompilerError::ResolverError(ResolverError::SelfOutsideImpl {
                         src: self.r.session.get_named_source(),
                         span: first_segment.span,
-                    },
-                ));
+                    }));
             }
 
             for arg in &first_segment.node.args {

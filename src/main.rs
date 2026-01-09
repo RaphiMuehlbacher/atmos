@@ -17,9 +17,9 @@ fn main() {
     let ast = parser.parse_crate();
 
     let mut resolver = Resolver::new(&session, &ast);
-    let ast_to_def = resolver.resolve();
+    let defs = resolver.resolve();
 
-    let mut ast_lowerer = AstLowerer::new(&session, ast_to_def, &ast);
+    let mut ast_lowerer = AstLowerer::new(&session, defs, &ast);
     let hir = ast_lowerer.lower();
 
     session.emit_all();

@@ -1,5 +1,6 @@
 use crate::parser::ast::Item;
 use crate::parser::AstId;
+use crate::resolver::ribs::Res;
 use std::collections::HashMap;
 
 #[derive(Copy, Debug, Clone, PartialEq, Eq, Hash, Default)]
@@ -8,6 +9,7 @@ pub struct DefId(usize);
 #[derive(Clone, PartialEq, Debug, Default)]
 pub struct DefinitionMap {
     pub definitions: HashMap<DefId, Definition>,
+    pub resolutions: HashMap<AstId, Res>,
     pub ast_to_def: HashMap<AstId, DefId>,
     next_def_id: DefId,
 }
@@ -36,6 +38,14 @@ impl DefinitionMap {
 
     pub fn get_def_from_ast(&self, ast_id: AstId) -> Option<&DefId> {
         self.ast_to_def.get(&ast_id)
+    }
+
+    pub fn insert_resolution(&mut self, ast_id: AstId, resolution: Res) {
+        self.resolutions.insert(ast_id, resolution);
+    }
+
+    pub fn get_resolution(&self, ast_id: AstId) -> Option<&Res> {
+        self.resolutions.get(&ast_id)
     }
 }
 

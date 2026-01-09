@@ -88,7 +88,7 @@ pub enum Pattern {
     Struct(HirNode<Path>, Vec<HirNode<PatternStructField>>),
     TupleStruct(HirNode<Path>, Vec<HirNode<Pattern>>),
     Tuple(Vec<HirNode<Pattern>>),
-    Literal(Box<HirNode<Expr>>),
+    Expr(Box<HirNode<Expr>>),
 }
 
 #[derive(Debug, Clone)]
@@ -99,7 +99,7 @@ pub struct PatternStructField {
 
 #[derive(Debug, Clone)]
 pub enum AssociatedItem {
-    Fn(HirNode<FnSig>, Option<HirNode<Block>>),
+    Fn(HirNode<FnSig>, Option<HirNode<BlockExpr>>),
     Type(HirNode<TyAlias>),
 }
 
@@ -120,13 +120,13 @@ pub enum Item {
 pub struct FnDecl {
     pub def_id: DefId,
     pub sig: HirNode<FnSig>,
-    pub body: HirNode<Block>,
+    pub body: HirNode<BlockExpr>,
 }
 
 #[derive(Debug, Clone)]
 pub struct FnSig {
     pub ident: HirNode<Ident>,
-    pub generics: Generics,
+    pub generics: Vec<HirNode<GenericParam>>,
     pub params: Vec<HirNode<Param>>,
     pub return_ty: Option<HirNode<Ty>>,
 }
@@ -134,12 +134,7 @@ pub struct FnSig {
 #[derive(Debug, Clone)]
 pub struct Param {
     pub pattern: HirNode<Pattern>,
-    pub ty: HirNode<Ty>,
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct Generics {
-    pub params: Vec<HirNode<GenericParam>>,
+    pub type_annotation: HirNode<Ty>,
 }
 
 #[derive(Debug, Clone)]
@@ -166,7 +161,7 @@ pub struct ExternFnDecl {
 pub struct ConstDecl {
     pub def_id: DefId,
     pub ident: HirNode<Ident>,
-    pub generics: Generics,
+    pub generics: Vec<HirNode<GenericParam>>,
     pub ty: Option<HirNode<Ty>>,
     pub expr: HirNode<Expr>,
 }
@@ -175,7 +170,7 @@ pub struct ConstDecl {
 pub struct StructDecl {
     pub def_id: DefId,
     pub ident: HirNode<Ident>,
-    pub generics: Generics,
+    pub generics: Vec<HirNode<GenericParam>>,
     pub data: HirNode<VariantData>,
 }
 
@@ -183,7 +178,7 @@ pub struct StructDecl {
 pub struct EnumDecl {
     pub def_id: DefId,
     pub ident: HirNode<Ident>,
-    pub generics: Generics,
+    pub generics: Vec<HirNode<GenericParam>>,
     pub variants: Vec<HirNode<EnumVariant>>,
 }
 
@@ -212,7 +207,7 @@ pub struct StructField {
 pub struct TraitDecl {
     pub def_id: DefId,
     pub ident: HirNode<Ident>,
-    pub generics: Generics,
+    pub generics: Vec<HirNode<GenericParam>>,
     pub items: Vec<HirNode<AssociatedItem>>,
 }
 
@@ -226,7 +221,7 @@ pub struct ModDecl {
 #[derive(Debug, Clone)]
 pub struct ImplDecl {
     pub def_id: DefId,
-    pub generics: Generics,
+    pub generics: Vec<HirNode<GenericParam>>,
     pub self_ty: HirNode<Ty>,
     pub of_trait: Option<HirNode<Path>>,
     pub items: Vec<HirNode<AssociatedItem>>,
@@ -236,7 +231,7 @@ pub struct ImplDecl {
 pub struct TyAlias {
     pub def_id: DefId,
     pub ident: HirNode<Ident>,
-    pub generics: Generics,
+    pub generics: Vec<HirNode<GenericParam>>,
     pub ty: Option<HirNode<Ty>>,
 }
 
@@ -276,7 +271,7 @@ pub enum Expr {
     Binary(BinaryExpr),
     Unary(UnaryExpr),
     If(IfExpr),
-    Block(HirNode<Block>),
+    Block(HirNode<BlockExpr>),
     Match(MatchExpr),
     Let(LetExpr),
     Err,
@@ -315,7 +310,7 @@ pub struct CastExpr {
 
 #[derive(Debug, Clone)]
 pub struct LoopExpr {
-    pub body: HirNode<Block>,
+    pub body: HirNode<BlockExpr>,
 }
 
 #[derive(Debug, Clone)]
@@ -395,12 +390,12 @@ pub enum AssignOp {
 #[derive(Debug, Clone)]
 pub struct IfExpr {
     pub condition: Box<HirNode<Expr>>,
-    pub then_branch: HirNode<Block>,
-    pub else_branch: Option<HirNode<Block>>,
+    pub then_branch: HirNode<BlockExpr>,
+    pub else_branch: Option<HirNode<BlockExpr>>,
 }
 
 #[derive(Debug, Clone)]
-pub struct Block {
+pub struct BlockExpr {
     pub stmts: Vec<HirNode<Stmt>>,
 }
 
