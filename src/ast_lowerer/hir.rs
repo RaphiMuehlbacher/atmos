@@ -247,7 +247,7 @@ pub enum Stmt {
 pub struct LetStmt {
     pub pattern: HirNode<Pattern>,
     pub ty: Option<HirNode<Ty>>,
-    pub init: Option<Box<HirNode<Expr>>>,
+    pub expr: Option<Box<HirNode<Expr>>>,
 }
 
 #[derive(Debug, Clone)]
@@ -376,15 +376,6 @@ pub enum UnOp {
     Deref,
     Not,
     Neg,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AssignOp {
-    Add,
-    Sub,
-    Mul,
-    Div,
-    Rem,
 }
 
 #[derive(Debug, Clone)]

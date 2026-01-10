@@ -1,2 +1,10 @@
+mod a {
+    struct Person {
+        age: i32,
+    }
+}
+
 fn main() {
+    use a::Person;
+    let p1 = Person { age: 3 };
 }

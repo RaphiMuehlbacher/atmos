@@ -3,12 +3,12 @@ use crate::extension::SourceSpanExt;
 use crate::lexer::token_kind::{Delimiter, Kw, Literal, Punct};
 use crate::lexer::{Token, TokenKind};
 use crate::parser::ast::{
-    ArrayExpr, AssignExpr, AssignOp, AssignOpExpr, AssociatedItem, AstNode, BinOp, BinaryExpr, BlockExpr, BreakExpr,
-    CallExpr, CastExpr, ConstDecl, Crate, EnumDecl, EnumVariant, Expr, ExternFnDecl, FieldAccessExpr, FnDecl, FnSig,
-    ForExpr, GenericArg, GenericParam, GenericParamKind, Ident, IfExpr, ImplDecl, IndexExpr, Item, LetExpr, LetStmt,
-    LiteralExpr, LoopExpr, MatchArm, MatchExpr, MethodCallExpr, ModDecl, Param, Path, PathExpr, PathSegment, Pattern,
-    PatternStructField, ReturnExpr, Stmt, StructDecl, StructExpr, StructExprField, StructFieldDef, TraitDecl,
-    TupleExpr, Ty, TyAliasDecl, UnOp, UnaryExpr, UseItem, VariantData, WhileExpr,
+    AddrOfExpr, ArrayExpr, AssignExpr, AssignOp, AssignOpExpr, AssociatedItem, AstNode, BinOp, BinaryExpr, BlockExpr,
+    BreakExpr, CallExpr, CastExpr, ConstDecl, Crate, EnumDecl, EnumVariant, Expr, ExternFnDecl, FieldAccessExpr,
+    FnDecl, FnSig, ForExpr, GenericArg, GenericParam, GenericParamKind, Ident, IfExpr, ImplDecl, IndexExpr, Item,
+    LetExpr, LetStmt, LiteralExpr, LoopExpr, MatchArm, MatchExpr, MethodCallExpr, ModDecl, Param, Path, PathExpr,
+    PathSegment, Pattern, PatternStructField, ReturnExpr, Stmt, StructDecl, StructExpr, StructExprField,
+    StructFieldDef, TraitDecl, TupleExpr, Ty, TyAliasDecl, UnOp, UnaryExpr, UseItem, VariantData, WhileExpr,
 };
 use crate::parser::ParserError;
 use crate::Session;
@@ -1265,6 +1265,17 @@ impl<'a> Parser<'a> {
 
     fn parse_prefix(&mut self) -> PResult<AstNode<Expr>> {
         let lo = self.current().span;
+
+        if self.check(&[TokenKind::Punctuation(Punct::Ampersand)]) {
+            self.advance();
+            let operand = self.parse_prefix()?;
+            return Ok(AstNode::new(
+                Expr::AddrOf(AddrOfExpr {
+                    expr: Box::new(operand),
+                }),
+                lo.to(self.previous().span),
+            ));
+        }
 
         let Ok(op) = UnOp::try_from(self.current()) else {
             return self.parse_atom();

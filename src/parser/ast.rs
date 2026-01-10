@@ -515,7 +515,6 @@ pub enum UnOp {
     Deref,
     Not,
     Neg,
-    AddrOf,
 }
 
 impl TryFrom<&Token> for UnOp {
@@ -526,7 +525,6 @@ impl TryFrom<&Token> for UnOp {
             TokenKind::Punctuation(Punct::Star) => Ok(UnOp::Deref),
             TokenKind::Punctuation(Punct::Bang) => Ok(UnOp::Not),
             TokenKind::Punctuation(Punct::Minus) => Ok(UnOp::Neg),
-            TokenKind::Punctuation(Punct::Ampersand) => Ok(UnOp::AddrOf),
             _ => Err(()),
         }
     }

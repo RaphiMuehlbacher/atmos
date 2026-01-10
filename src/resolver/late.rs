@@ -126,6 +126,7 @@ impl<'a, 'r> LateResolver<'a, 'r> {
                     }
 
                     self.define_binding(&name, pattern);
+                    self.r.defs.insert_resolution(path.ast_id, Res::Local(pattern.ast_id));
                 } else {
                     self.resolve_path(path);
                 }
@@ -249,6 +250,7 @@ impl<'a, 'r> LateResolver<'a, 'r> {
                             self.report_unresolved_path(path);
                             return;
                         }
+                        self.r.defs.insert_resolution(path.ast_id, Res::Def(def_id));
                         self.r.defs.insert_ast_id(path.ast_id, def_id);
                         return;
                     }
