@@ -132,7 +132,7 @@ impl<'sess> Lexer<'sess> {
                 ',' => TokenKind::Punctuation(Punct::Comma),
                 ';' => TokenKind::Punctuation(Punct::Semicolon),
                 '?' => TokenKind::Punctuation(Punct::Question),
-                '_' => TokenKind::Punctuation(Punct::Underscore),
+                '_' if self.is_standalone_underscore() => TokenKind::Punctuation(Punct::Underscore),
                 '|' => {
                     if self.match_char('|') {
                         TokenKind::Punctuation(Punct::Or)
@@ -345,6 +345,10 @@ impl<'sess> Lexer<'sess> {
 
     fn is_ident_continue(&self, c: char) -> bool {
         c.is_ascii_alphanumeric() || c == '_'
+    }
+
+    fn is_standalone_underscore(&self) -> bool {
+        !matches!(self.peek(), Some(next) if self.is_ident_continue(next))
     }
 
     fn peek(&self) -> Option<char> {
