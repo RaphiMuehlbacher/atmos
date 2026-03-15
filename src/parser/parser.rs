@@ -317,8 +317,8 @@ impl<'a> Parser<'a> {
         if self.at_eof() {
             return Crate {
                 items: vec![],
-                span: lo.to(self.current().span)
-            }
+                span: lo.to(self.current().span),
+            };
         }
 
         while !self.at_eof() {
@@ -942,7 +942,7 @@ impl<'a> Parser<'a> {
                 }
                 Ty::Array(Box::new(inner_ty), Box::new(len))
             }
-            TokenKind::Punctuation(Punct::Star) => {
+            TokenKind::Punctuation(Punct::Ampersand) => {
                 self.advance();
                 let ty = self.parse_type()?;
                 Ty::Ptr(Box::new(ty))

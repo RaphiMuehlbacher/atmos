@@ -1,10 +1,11 @@
-mod a {
-    struct Person {
-        age: i32,
-    }
+/*
+trait Trait<T> {
+    fn foo<U>();
 }
+*/
 
-fn main() {
-    use a::Person;
-    let p1 = Person { age: 3 };
+struct Foo;
+
+impl Foo {
+    fn foo(self: &Self) {}
 }

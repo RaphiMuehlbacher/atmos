@@ -470,13 +470,15 @@ impl<'a, 'r> Visitor for LateResolver<'a, 'r> {
 
         let first_segment = &path.node.segments[0];
         if first_segment.node.ident.node.name == "Self" {
-            if self.self_ty_info.is_none() {
-                self.r
+            match self.self_ty_info {
+                Some(self_ty_info) => self.r.defs.insert_resolution(path.ast_id, Res::SelfTy(self_ty_info)),
+                None => self
+                    .r
                     .session
                     .push_error(CompilerError::ResolverError(ResolverError::SelfOutsideImpl {
                         src: self.r.session.get_named_source(),
                         span: first_segment.span,
-                    }));
+                    })),
             }
 
             for arg in &first_segment.node.args {
