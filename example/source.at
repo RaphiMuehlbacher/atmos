@@ -1,7 +1,9 @@
 // fn foo<T, U>(a: T, _b: U) -> T { a }
 
-fn foo<T>(a: T) -> T { a }
+mod b {
+    fn foo<T>(a: T) -> T { a }
+}
 
 fn main() {
-    let c = foo::<i32>(1);
+    let c = b::foo<i32>(1);
 }

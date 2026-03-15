@@ -1,5 +1,5 @@
 use crate::error::CompilerError;
-use crate::parser::ast::{AstNode, BlockExpr, Expr, Ident, Item, LetStmt, Path, PathSegment, Pattern, Ty};
+use crate::parser::ast::{AstNode, BlockExpr, Expr, GenericArg, Ident, Item, LetStmt, Path, PathSegment, Pattern, Ty};
 use crate::resolver::defs::DefKind;
 use crate::resolver::modules::{Binding, ModuleId, ModuleKind};
 use crate::resolver::ribs::{PrimTy, Res, Rib, RibKind, SelfTyInfo};
@@ -204,6 +204,13 @@ impl<'a, 'r> LateResolver<'a, 'r> {
         }
     }
 
+    fn resolve_generic_arg(&mut self, generic_arg: &AstNode<GenericArg>) {
+        match &generic_arg.node {
+            GenericArg::Type(ty) => visitor::walk_type(self, ty),
+            GenericArg::Const(expr) => self.visit_expr(expr),
+        }
+    }
+
     fn resolve_path(&mut self, path: &AstNode<Path>) {
         if path.node.segments.is_empty() {
             return;
@@ -220,11 +227,19 @@ impl<'a, 'r> LateResolver<'a, 'r> {
                 None => self.report_unresolved_path(path),
                 Some(res) => self.r.defs.insert_resolution(path.ast_id, res),
             }
+
+            for arg in &segments[0].node.args {
+                self.resolve_generic_arg(arg);
+            }
             return;
         }
 
         for (i, segment) in segments.iter().enumerate().skip(segment_start) {
             let ident = &segment.node.ident.node;
+
+            for arg in &segment.node.args {
+                self.resolve_generic_arg(arg);
+            }
 
             let binding = self.resolve_ident_in_module(current_module, ident);
 
