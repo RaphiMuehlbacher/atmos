@@ -65,7 +65,7 @@ impl<'sess> Lexer<'sess> {
                         while depth > 0 {
                             match self.advance() {
                                 Some('/') if self.match_char('*') => depth += 1,
-                                Some('*') if self.match_char('/') => depth += 1,
+                                Some('*') if self.match_char('/') => depth -= 1,
                                 None => {
                                     self.session.push_error(
                                         LexerError::UnterminatedComment {
@@ -171,7 +171,7 @@ impl<'sess> Lexer<'sess> {
             tokens.push(token);
         }
 
-        tokens.push(Token::new(TokenKind::EOF, SourceSpan::from((self.position - 2, 1))));
+        tokens.push(Token::new(TokenKind::EOF, SourceSpan::from((self.position, 0))));
         tokens
     }
 
@@ -352,7 +352,12 @@ impl<'sess> Lexer<'sess> {
     }
 
     fn peek_next(&self) -> Option<char> {
-        self.session.get_source()[self.position + 1..].chars().next()
+        let src = self.session.get_source();
+        if self.position + 1 <= src.len() {
+            src[self.position + 1..].chars().next()
+        } else {
+            None
+        }
     }
 
     fn advance(&mut self) -> Option<char> {

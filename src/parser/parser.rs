@@ -314,6 +314,13 @@ impl<'a> Parser<'a> {
         let lo = self.current().span;
         let mut items = vec![];
 
+        if self.at_eof() {
+            return Crate {
+                items: vec![],
+                span: lo.to(self.current().span)
+            }
+        }
+
         while !self.at_eof() {
             match self.parse_item() {
                 Ok(item) => items.push(item),
