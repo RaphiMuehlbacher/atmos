@@ -9,5 +9,6 @@ pub mod resolver;
 pub mod ribs;
 pub mod visitor;
 
+pub use defs::DefId;
 pub use error::ResolverError;
 pub use resolver::Resolver;

@@ -1,5 +1,5 @@
 use atmos::ast_lowerer::AstLowerer;
-use atmos::{Lexer, Parser, Resolver, Session};
+use atmos::{Lexer, Parser, Resolver, Session, TypeChecker};
 use miette::{GraphicalReportHandler, NamedSource};
 use std::fs;
 
@@ -19,8 +19,10 @@ fn main() {
     let mut resolver = Resolver::new(&session, &ast);
     let defs = resolver.resolve();
 
-    let mut ast_lowerer = AstLowerer::new(&session, defs, &ast);
+    let mut ast_lowerer = AstLowerer::new(defs, &ast);
     let hir = ast_lowerer.lower();
+
+    let mut type_checker = TypeChecker::new(&session, &hir);
 
     session.emit_all();
 }

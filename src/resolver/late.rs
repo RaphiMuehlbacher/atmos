@@ -1,9 +1,10 @@
 use crate::error::CompilerError;
 use crate::parser::ast::{AstNode, BlockExpr, Expr, Ident, Item, LetStmt, Path, PathSegment, Pattern, Ty};
-use crate::resolver::defs::{DefId, DefKind};
+use crate::resolver::defs::DefKind;
 use crate::resolver::modules::{Binding, ModuleId, ModuleKind};
 use crate::resolver::ribs::{PrimTy, Res, Rib, RibKind, SelfTyInfo};
 use crate::resolver::visitor::Visitor;
+use crate::resolver::DefId;
 use crate::resolver::{visitor, ResolverError};
 use crate::{visit_opt, Resolver};
 use std::collections::HashSet;

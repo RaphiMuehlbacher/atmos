@@ -3,17 +3,15 @@ use crate::ast_lowerer::hir::HirNode;
 use crate::parser::ast;
 use crate::parser::ast::AstNode;
 use crate::resolver::defs::DefinitionMap;
-use crate::Session;
 
 pub struct AstLowerer<'ast> {
     ast: &'ast ast::Crate,
-    session: &'ast Session,
     defs: &'ast DefinitionMap,
 }
 
 impl<'ast> AstLowerer<'ast> {
-    pub fn new(session: &'ast Session, defs: &'ast DefinitionMap, ast: &'ast ast::Crate) -> Self {
-        Self { ast, session, defs }
+    pub fn new(defs: &'ast DefinitionMap, ast: &'ast ast::Crate) -> Self {
+        Self { ast, defs }
     }
 
     pub fn lower(&mut self) -> hir::Crate {

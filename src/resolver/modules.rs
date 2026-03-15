@@ -1,5 +1,5 @@
 use crate::parser::ast::{Ident, Path};
-use crate::resolver::defs::DefId;
+use crate::resolver::DefId;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq)]

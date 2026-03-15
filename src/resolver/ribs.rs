@@ -1,6 +1,6 @@
 use crate::parser::ast::Ident;
 use crate::parser::AstId;
-use crate::resolver::defs::DefId;
+use crate::resolver::DefId;
 use std::collections::HashMap;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
