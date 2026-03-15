@@ -81,6 +81,10 @@ pub trait Visitor: Sized {
         walk_assoc_item(self, assoc_item);
     }
 
+    fn visit_ty_alias(&mut self, ty_alias: &AstNode<TyAliasDecl>) {
+        walk_ty_alias(self, ty_alias)
+    }
+
     fn visit_path(&mut self, path: &AstNode<Path>) {
         walk_path(self, path);
     }
@@ -208,13 +212,14 @@ pub fn walk_assoc_item(visitor: &mut impl Visitor, assoc_item: &AstNode<Associat
             visitor.visit_fn_sig(sig);
             visit_opt!(visitor, visit_block, block);
         }
-        AssociatedItem::Type(ty_alias) => {
-            let TyAliasDecl { ident, generics, ty } = &ty_alias.node;
-            visitor.visit_ident(ident);
-            visit_list!(visitor, visit_generic_param, generics);
-            visit_opt!(visitor, visit_type, ty);
-        }
+        AssociatedItem::Type(ty_alias) => visitor.visit_ty_alias(ty_alias),
     }
+}
+
+pub fn walk_ty_alias(visitor: &mut impl Visitor, ty_alias: &AstNode<TyAliasDecl>) {
+    visitor.visit_ident(&ty_alias.node.ident);
+    visit_list!(visitor, visit_generic_param, &ty_alias.node.generics);
+    visit_opt!(visitor, visit_type, &ty_alias.node.ty);
 }
 
 pub fn walk_path(visitor: &mut impl Visitor, path: &AstNode<Path>) {

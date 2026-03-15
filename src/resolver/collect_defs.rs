@@ -40,8 +40,19 @@ impl<'a, 'r> visitor::Visitor for DefCollector<'a, 'r> {
 
     fn visit_assoc_item(&mut self, assoc_item: &AstNode<AssociatedItem>) {
         let def_kind = match &assoc_item.node {
-            AssociatedItem::Fn(_, _) => DefKind::AssocFn,
-            AssociatedItem::Type(_) => DefKind::AssocTypeAlias,
+            AssociatedItem::Fn(fn_sig, block) => {
+                visitor::walk_fn_sig(self, fn_sig);
+
+                if let Some(block) = block {
+                    visitor::walk_block(self, block);
+                }
+
+                DefKind::AssocFn
+            }
+            AssociatedItem::Type(ty_alias) => {
+                visitor::walk_ty_alias(self, ty_alias);
+                DefKind::AssocTypeAlias
+            }
         };
 
         self.resolver.defs.insert(assoc_item.ast_id, def_kind);

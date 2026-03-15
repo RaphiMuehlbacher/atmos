@@ -1,11 +1,4 @@
-/*
 trait Trait<T> {
-    fn foo<U>();
-}
-*/
-
-struct Foo;
-
-impl Foo {
-    fn foo(self: &Self) {}
+    fn foo<U>(self: U) {
+    }
 }
