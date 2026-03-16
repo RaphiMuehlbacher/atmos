@@ -597,7 +597,7 @@ impl<'ast> AstLowerer<'ast> {
                 hir::AssociatedItem::Fn(sig, body)
             }
             ast::AssociatedItem::Type(ty_alias) => {
-                let def_id = *self.defs.ast_to_def.get(&ty_alias.ast_id).unwrap();
+                let def_id = *self.defs.ast_to_def.get(&item.ast_id).unwrap();
                 let ident = ty_alias.node.ident.clone().into();
                 let generics = ty_alias
                     .node

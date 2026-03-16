@@ -1,9 +1,64 @@
-// fn foo<T, U>(a: T, _b: U) -> T { a }
-
-mod b {
-    fn foo<T>(a: T) -> T { a }
+/*
+enum Option<T> {
+    Some(T),
+    None
 }
 
+trait Iterator {
+    type Item;
+
+    fn next(self: &Self) -> Option<Self::Item>;
+}
+
+struct Counter {
+    current: u32,
+    max: u32
+}
+
+impl Counter {
+    fn new(max: u32) -> Self {
+        Self {
+            current: 0,
+            max: max,
+        }
+    }
+}
+
+impl Iterator for Counter {
+    type Item = u32;
+
+    fn next(self: &Self) -> Option<Self::Item> {
+        if self.current < self.max {
+            let value = self.current;
+            self.current += 1;
+            Some(value)
+        } else {
+            None
+        }
+    }
+}
+
+
 fn main() {
-    let c = b::foo<i32>(1);
+    let counter = Counter::new(10);
+
+    loop {
+        match counter.next() {
+            Some(i) => {},
+            None => break,
+        }
+    }
+
+}
+*/
+
+struct S{
+    a: i32,
+}
+
+impl S {
+    fn foo(self: &Self) -> i32 {
+        self.a
+    }
+
 }

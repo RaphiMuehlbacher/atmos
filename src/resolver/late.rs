@@ -212,98 +212,94 @@ impl<'a, 'r> LateResolver<'a, 'r> {
     }
 
     fn resolve_path(&mut self, path: &AstNode<Path>) {
-        if path.node.segments.is_empty() {
+        let segments = &path.node.segments;
+
+        if segments.is_empty() {
             return;
         }
 
-        let segments = &path.node.segments;
-        let Some((mut current_module, segment_start)) = self.resolve_first_segment(segments) else {
-            return;
-        };
+        let first_ident = &segments[0].node.ident.node;
 
-        if segments.len() == 1 && segment_start == 0 {
-            let first_ident = &segments[0].node.ident.node;
-            match self.lookup_value(first_ident) {
-                None => self.report_unresolved_path(path),
-                Some(res) => self.r.defs.insert_resolution(path.ast_id, res),
-            }
+        // Single-segment: try bindings first
+        if segments.len() == 1
+            && let Some(res) = self.lookup_value(first_ident)
+        {
+            self.r.defs.insert_resolution(path.ast_id, res);
 
             for arg in &segments[0].node.args {
                 self.resolve_generic_arg(arg);
             }
+
             return;
         }
 
+        // Multi-segment: navigate through modules
+        let Some((mut current_module, segment_start)) = self.resolve_first_segment(segments) else {
+            return;
+        };
+
         for (i, segment) in segments.iter().enumerate().skip(segment_start) {
             let ident = &segment.node.ident.node;
-
             for arg in &segment.node.args {
                 self.resolve_generic_arg(arg);
             }
 
-            let binding = self.resolve_ident_in_module(current_module, ident);
-
-            match binding {
-                Some(binding) => match binding {
-                    Binding::Module(module_id) => {
-                        current_module = module_id;
-                    }
-                    Binding::Item(def_id) => {
-                        let def = self.r.defs.get_definition(def_id);
-
-                        if i < segments.len() - 1 {
-                            if matches!(
-                                def.unwrap().kind,
-                                DefKind::TypeParam
-                                    | DefKind::Struct
-                                    | DefKind::Enum
-                                    | DefKind::TypeAlias
-                                    | DefKind::Trait
-                            ) {
-                                self.r.defs.insert_ast_id(path.ast_id, def_id);
-                                return;
-                            }
-                            self.report_unresolved_path(path);
-                            return;
-                        }
-                        self.r.defs.insert_resolution(path.ast_id, Res::Def(def_id));
+            let is_last = i == segments.len() - 1;
+            match self.resolve_ident_in_module(current_module, ident) {
+                Some(Binding::Module(module_id)) => {
+                    current_module = module_id;
+                }
+                Some(Binding::Item(def_id)) => {
+                    if !is_last
+                        && matches!(
+                            self.r.defs.get_definition(def_id).unwrap().kind,
+                            DefKind::TypeParam | DefKind::Struct | DefKind::Enum | DefKind::TypeAlias | DefKind::Trait
+                        )
+                    {
                         self.r.defs.insert_ast_id(path.ast_id, def_id);
                         return;
                     }
-                    Binding::Import(import_id) => {
-                        let import = self.r.module_arena.get_import(import_id);
-                        match &import.resolved_binding {
-                            Some(Binding::Module(module_id)) => {
-                                current_module = *module_id;
-                            }
-                            Some(Binding::Item(def_id)) => {
-                                let def = self.r.defs.get_definition(*def_id);
-
-                                if i < segments.len() - 1 {
-                                    if matches!(
-                                        def.unwrap().kind,
-                                        DefKind::TypeParam
-                                            | DefKind::Struct
-                                            | DefKind::Enum
-                                            | DefKind::TypeAlias
-                                            | DefKind::Trait
-                                    ) {
-                                        self.r.defs.insert_ast_id(path.ast_id, *def_id);
-                                        return;
-                                    }
-                                    self.report_unresolved_path(path);
-                                    return;
-                                }
+                    if !is_last {
+                        self.report_unresolved_path(path);
+                        return;
+                    }
+                    self.r.defs.insert_resolution(path.ast_id, Res::Def(def_id));
+                    self.r.defs.insert_ast_id(path.ast_id, def_id);
+                    return;
+                }
+                Some(Binding::Import(import_id)) => {
+                    let import = self.r.module_arena.get_import(import_id);
+                    match &import.resolved_binding {
+                        Some(Binding::Module(module_id)) => {
+                            current_module = *module_id;
+                        }
+                        Some(Binding::Item(def_id)) => {
+                            if !is_last
+                                && matches!(
+                                    self.r.defs.get_definition(*def_id).unwrap().kind,
+                                    DefKind::TypeParam
+                                        | DefKind::Struct
+                                        | DefKind::Enum
+                                        | DefKind::TypeAlias
+                                        | DefKind::Trait
+                                )
+                            {
                                 self.r.defs.insert_ast_id(path.ast_id, *def_id);
                                 return;
                             }
-                            Some(Binding::Import(_)) | None => {
+                            if !is_last {
                                 self.report_unresolved_path(path);
                                 return;
                             }
+                            self.r.defs.insert_ast_id(path.ast_id, *def_id);
+                            return;
+                        }
+                        _ => {
+                            self.report_unresolved_path(path);
+                            return;
                         }
                     }
-                },
+                }
                 None => {
                     self.report_unresolved_path(path);
                     return;
@@ -312,7 +308,7 @@ impl<'a, 'r> LateResolver<'a, 'r> {
         }
 
         let ModuleKind::Def(def_id) = self.r.module_arena.get(current_module).kind else {
-            unreachable!();
+            unreachable!("{:?}", path);
         };
 
         self.r.defs.insert_ast_id(path.ast_id, def_id);
