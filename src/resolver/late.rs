@@ -1,6 +1,6 @@
 use crate::error::CompilerError;
 use crate::parser::ast::{AstNode, BlockExpr, Expr, GenericArg, Ident, Item, LetStmt, Path, PathSegment, Pattern, Ty};
-use crate::resolver::defs::DefKind;
+use crate::resolver::defs::{DefKind, PartialRes};
 use crate::resolver::modules::{Binding, ModuleId, ModuleKind};
 use crate::resolver::ribs::{PrimTy, Res, Rib, RibKind, SelfTyInfo};
 use crate::resolver::visitor::Visitor;
@@ -105,7 +105,7 @@ impl<'a, 'r> LateResolver<'a, 'r> {
                     if matches!(source, PatternSource::Match) {
                         if let Some(res) = self.lookup_value(&name.node) {
                             match res {
-                                Res::Local(_) | Res::PrimTy(_) | Res::SelfTy(_) => {}
+                                Res::Local(_) | Res::PrimTy(_) | Res::SelfTy(_) | Res::Err => {}
                                 Res::Def(def_id) => {
                                     self.r.defs.insert_ast_id(path.ast_id, def_id);
                                     return;
@@ -256,6 +256,8 @@ impl<'a, 'r> LateResolver<'a, 'r> {
                             DefKind::TypeParam | DefKind::Struct | DefKind::Enum | DefKind::TypeAlias | DefKind::Trait
                         )
                     {
+                        let partial_res = PartialRes::new(Res::Def(def_id), segments.len() - 1 - i);
+                        self.r.defs.partial_res.insert(path.ast_id, partial_res);
                         self.r.defs.insert_ast_id(path.ast_id, def_id);
                         return;
                     }

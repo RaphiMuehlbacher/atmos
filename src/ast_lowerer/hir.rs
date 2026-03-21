@@ -52,9 +52,16 @@ pub struct Crate {
 }
 
 #[derive(Debug, Clone)]
-pub struct Path {
-    pub segments: Vec<HirNode<PathSegment>>,
-    pub res: Res,
+pub enum Path {
+    Resolved {
+        res: Res,
+        segments: Vec<HirNode<PathSegment>>,
+    },
+    Unresolved {
+        res: Res,
+        resolved_segments: Vec<HirNode<PathSegment>>,
+        unresolved_segments: Vec<HirNode<PathSegment>>,
+    },
 }
 
 #[derive(Debug, Clone)]

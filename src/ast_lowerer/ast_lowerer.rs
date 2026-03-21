@@ -210,16 +210,31 @@ impl<'ast> AstLowerer<'ast> {
     }
 
     fn lower_path(&mut self, path: &AstNode<ast::Path>) -> HirNode<hir::Path> {
-        let segments = path
-            .node
-            .segments
-            .iter()
-            .map(|segment| self.lower_segment(&segment))
-            .collect();
-        let res = self.defs.get_resolution(path.ast_id).unwrap().clone();
-        HirNode::new(hir::Path { segments, res }, path.span)
+        let lowered_path = match self.defs.partial_res.get(&path.ast_id) {
+            Some(partial_res) => {
+                let res = partial_res.base_res();
+                let resolved_segments = path.node.segments.len() - partial_res.unresolved_segments();
+                let lowered_segments = self.lower_segments(&path.node.segments);
+
+                hir::Path::Unresolved {
+                    res,
+                    resolved_segments: lowered_segments[0..resolved_segments].to_vec(),
+                    unresolved_segments: lowered_segments[resolved_segments..].to_vec(),
+                }
+            }
+
+            None => {
+                let res = self.defs.get_resolution(path.ast_id).unwrap().clone();
+                let segments = self.lower_segments(&path.node.segments);
+                hir::Path::Resolved { res, segments }
+            }
+        };
+        HirNode::new(lowered_path, path.span)
     }
 
+    fn lower_segments(&mut self, segments: &Vec<AstNode<ast::PathSegment>>) -> Vec<HirNode<hir::PathSegment>> {
+        segments.iter().map(|segment| self.lower_segment(&segment)).collect()
+    }
     fn lower_segment(&mut self, segment: &AstNode<ast::PathSegment>) -> HirNode<hir::PathSegment> {
         let ident = segment.node.ident.clone().into();
         let args = segment

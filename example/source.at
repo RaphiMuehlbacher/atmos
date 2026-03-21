@@ -52,13 +52,12 @@ fn main() {
 }
 */
 
-struct S{
-    a: i32,
-}
+struct S;
 
 impl S {
-    fn foo(self: &Self) -> i32 {
-        self.a
-    }
+    fn foo() {}
+}
 
+fn main() {
+    let a = S::foo;
 }

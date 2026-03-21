@@ -11,6 +11,7 @@ pub struct DefinitionMap {
     pub definitions: HashMap<DefId, Definition>,
     pub resolutions: HashMap<AstId, Res>,
     pub ast_to_def: HashMap<AstId, DefId>,
+    pub partial_res: HashMap<AstId, PartialRes>,
     next_def_id: DefId,
 }
 
@@ -95,5 +96,28 @@ impl From<&Item> for DefKind {
             Item::TyAlias(_) => DefKind::TypeAlias,
             Item::Err => panic!(),
         }
+    }
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub struct PartialRes {
+    base_res: Res,
+    unresolved_segments: usize,
+}
+
+impl PartialRes {
+    pub fn new(base_res: Res, unresolved_segments: usize) -> Self {
+        Self {
+            base_res,
+            unresolved_segments,
+        }
+    }
+
+    pub fn base_res(&self) -> Res {
+        self.base_res.clone()
+    }
+
+    pub fn unresolved_segments(&self) -> usize {
+        self.unresolved_segments
     }
 }

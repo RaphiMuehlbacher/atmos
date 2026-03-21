@@ -41,6 +41,7 @@ pub enum Res {
     Def(DefId),
     PrimTy(PrimTy),
     SelfTy(SelfTyInfo),
+    Err,
 }
 
 #[derive(Clone, PartialEq, Debug)]
