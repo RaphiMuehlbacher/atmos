@@ -303,6 +303,7 @@ impl<'a, 'r> LateResolver<'a, 'r> {
                     }
                 }
                 None => {
+                    self.r.defs.insert_resolution(path.ast_id, Res::Err);
                     self.report_unresolved_path(path);
                     return;
                 }

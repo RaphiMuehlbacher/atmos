@@ -1,4 +1,3 @@
-/*
 enum Option<T> {
     Some(T),
     None
@@ -31,9 +30,9 @@ impl Iterator for Counter {
         if self.current < self.max {
             let value = self.current;
             self.current += 1;
-            Some(value)
+            Option::Some(value)
         } else {
-            None
+            Option::None
         }
     }
 }
@@ -44,20 +43,9 @@ fn main() {
 
     loop {
         match counter.next() {
-            Some(i) => {},
-            None => break,
+            Option::Some(i) => {},
+            Option::None => break,
         }
     }
 
-}
-*/
-
-struct S;
-
-impl S {
-    fn foo() {}
-}
-
-fn main() {
-    let a = S::foo;
 }
