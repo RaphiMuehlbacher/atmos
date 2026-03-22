@@ -24,7 +24,7 @@ impl Counter {
 }
 
 impl Iterator for Counter {
-    type Item = u32;
+    type Item;
 
     fn next(self: &Self) -> Option<Self::Item> {
         if self.current < self.max {
@@ -47,5 +47,4 @@ fn main() {
             Option::None => break,
         }
     }
-
 }

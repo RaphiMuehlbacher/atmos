@@ -9,6 +9,7 @@ impl SourceSpanExt for SourceSpan {
     fn to(&self, other: SourceSpan) -> SourceSpan {
         let start = self.offset();
         let end = other.offset() + other.len();
+        assert!(end >= start);
 
         SourceSpan::new(start.into(), end - start)
     }

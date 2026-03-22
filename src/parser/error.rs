@@ -18,6 +18,21 @@ pub enum ParserError {
         found: TokenKind,
     },
 
+    #[error("Identifiers cannot start with a number")]
+    #[diagnostic(
+        code(parser::invalid_identifier_start),
+        help("Identifiers must start with a letter or underscore (`_`)")
+    )]
+    InvalidIdentifierStart {
+        #[source_code]
+        src: NamedSource<String>,
+
+        #[label("identifier starts with a number here")]
+        span: SourceSpan,
+
+        found: TokenKind,
+    },
+
     #[error("Expected `{expected}`, found `{found}`")]
     #[diagnostic(code(parser::unexpected_token))]
     UnexpectedToken {

@@ -273,6 +273,7 @@ impl<'ast> AstLowerer<'ast> {
                 hir::Ty::Tuple(types)
             }
             ast::Ty::Paren(ty) => self.lower_type(ty).node,
+            ast::Ty::Err => hir::Ty::Err,
         };
         HirNode::new(hir_ty, ty.span)
     }
@@ -561,6 +562,7 @@ impl<'ast> AstLowerer<'ast> {
             }
             ast::Pattern::Expr(expr) => hir::Pattern::Expr(Box::new(self.lower_expr(expr))),
             ast::Pattern::Paren(pattern) => self.lower_pattern(pattern).node,
+            ast::Pattern::Err => hir::Pattern::Err,
         };
 
         HirNode::new(pat, pattern.span)

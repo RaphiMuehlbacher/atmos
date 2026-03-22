@@ -371,12 +371,13 @@ pub fn walk_type(visitor: &mut impl Visitor, ty: &AstNode<Ty>) {
         }
         Ty::Tuple(types) => visit_list!(visitor, visit_type, types),
         Ty::Paren(ty) => visitor.visit_type(ty),
+        Ty::Err => {}
     }
 }
 
 pub fn walk_pattern(visitor: &mut impl Visitor, pattern: &AstNode<Pattern>) {
     match &pattern.node {
-        Pattern::Wildcard => {}
+        Pattern::Wildcard | Pattern::Err => {}
         Pattern::Or(patterns) => visit_list!(visitor, visit_pattern, patterns),
         Pattern::Path(path) => visitor.visit_path(path),
         Pattern::Struct(path, fields) => {

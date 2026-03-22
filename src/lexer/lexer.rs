@@ -246,6 +246,7 @@ impl<'sess> Lexer<'sess> {
             }
         }
 
+        let suffix_start = self.position;
         let suffix = if let Some(next) = self.peek() {
             if self.is_ident_start(next) {
                 if let TokenKind::Ident(ident) = self.lex_identifier() {
@@ -268,7 +269,10 @@ impl<'sess> Lexer<'sess> {
                 Some("i32") => TokenKind::Literal(Literal::I32(value.parse().unwrap())),
                 Some("u32") => TokenKind::Literal(Literal::U32(value.parse().unwrap())),
                 Some("f64") => TokenKind::Literal(Literal::F64(value.parse().unwrap())),
-                _ => TokenKind::Literal(Literal::I32(value.parse().unwrap())),
+                _ => {
+                    self.position = suffix_start;
+                    TokenKind::Literal(Literal::I32(value.parse().unwrap()))
+                }
             }
         }
     }

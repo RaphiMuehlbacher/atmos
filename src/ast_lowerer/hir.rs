@@ -85,6 +85,7 @@ pub enum Ty {
     Ptr(Box<HirNode<Ty>>),
     Fn(Vec<HirNode<Ty>>, Option<Box<HirNode<Ty>>>),
     Tuple(Vec<HirNode<Ty>>),
+    Err,
 }
 
 #[derive(Debug, Clone)]
@@ -96,6 +97,7 @@ pub enum Pattern {
     TupleStruct(HirNode<Path>, Vec<HirNode<Pattern>>),
     Tuple(Vec<HirNode<Pattern>>),
     Expr(Box<HirNode<Expr>>),
+    Err,
 }
 
 #[derive(Debug, Clone)]

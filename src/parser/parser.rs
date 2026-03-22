@@ -32,6 +32,10 @@ impl<'a> Parser<'a> {
         &self.tokens[self.position]
     }
 
+    fn peek(&self) -> &Token {
+        &self.tokens[self.position + 1]
+    }
+
     fn previous(&self) -> &Token {
         &self.tokens[self.position - 1]
     }
@@ -744,31 +748,20 @@ impl<'a> Parser<'a> {
                 self.advance();
                 Pattern::Wildcard
             }
-            TokenKind::Ident(_) => {
-                let path = self.parse_path()?;
-
-                if self.check(&[TokenKind::OpeningDelimiter(Delimiter::Brace)]) {
-                    // Struct pattern: Path { field: pattern, ... }
-                    let fields = self.parse_separated_delimited(
-                        TokenKind::OpeningDelimiter(Delimiter::Brace),
-                        TokenKind::ClosingDelimiter(Delimiter::Brace),
-                        TokenKind::Punctuation(Punct::Comma),
-                        |p| p.parse_pattern_struct_field(),
-                    );
-                    Pattern::Struct(path, fields)
-                } else if self.check(&[TokenKind::OpeningDelimiter(Delimiter::Paren)]) {
-                    // TupleStruct pattern: Path(pattern, ...)
-                    let patterns = self.parse_separated_delimited(
-                        TokenKind::OpeningDelimiter(Delimiter::Paren),
-                        TokenKind::ClosingDelimiter(Delimiter::Paren),
-                        TokenKind::Punctuation(Punct::Comma),
-                        |p| p.parse_pattern(),
-                    );
-                    Pattern::TupleStruct(path, patterns)
-                } else {
-                    Pattern::Path(path)
+            TokenKind::Ident(_) => match self.parse_path_pattern() {
+                Ok(pattern) => pattern,
+                Err(err) => {
+                    self.emit(err);
+                    Pattern::Err
                 }
-            }
+            },
+            _ if self.number_before_ident() => match self.parse_path_pattern() {
+                Ok(pattern) => pattern,
+                Err(err) => {
+                    self.emit(err);
+                    Pattern::Err
+                }
+            },
             TokenKind::OpeningDelimiter(Delimiter::Paren) => {
                 let (elements, trailing_comma) = self.parse_separated_delimited_with_trailing(
                     TokenKind::OpeningDelimiter(Delimiter::Paren),
@@ -792,6 +785,44 @@ impl<'a> Parser<'a> {
         Ok(AstNode::new(pattern, lo.to(self.previous().span)))
     }
 
+    fn number_before_ident(&self) -> bool {
+        if let TokenKind::Literal(lit) = &self.current().kind
+            && matches!(lit, Literal::F64(..) | Literal::I32(..) | Literal::U32(..))
+            && matches!(self.peek().kind, TokenKind::Ident(_))
+        {
+            true
+        } else {
+            false
+        }
+    }
+
+    fn parse_path_pattern(&mut self) -> PResult<Pattern> {
+        let path = self.parse_path()?;
+
+        let pattern = if self.check(&[TokenKind::OpeningDelimiter(Delimiter::Brace)]) {
+            // Struct pattern: Path { field: pattern, ... }
+            let fields = self.parse_separated_delimited(
+                TokenKind::OpeningDelimiter(Delimiter::Brace),
+                TokenKind::ClosingDelimiter(Delimiter::Brace),
+                TokenKind::Punctuation(Punct::Comma),
+                |p| p.parse_pattern_struct_field(),
+            );
+            Pattern::Struct(path, fields)
+        } else if self.check(&[TokenKind::OpeningDelimiter(Delimiter::Paren)]) {
+            // TupleStruct pattern: Path(pattern, ...)
+            let patterns = self.parse_separated_delimited(
+                TokenKind::OpeningDelimiter(Delimiter::Paren),
+                TokenKind::ClosingDelimiter(Delimiter::Paren),
+                TokenKind::Punctuation(Punct::Comma),
+                |p| p.parse_pattern(),
+            );
+            Pattern::TupleStruct(path, patterns)
+        } else {
+            Pattern::Path(path)
+        };
+
+        Ok(pattern)
+    }
     fn parse_pattern_struct_field(&mut self) -> PResult<AstNode<PatternStructField>> {
         let lo = self.current().span;
 
@@ -962,7 +993,13 @@ impl<'a> Parser<'a> {
                 }
             }
 
-            _ => Ty::Path(self.parse_path()?),
+            _ => match self.parse_path() {
+                Ok(path) => Ty::Path(path),
+                Err(err) => {
+                    self.emit(err);
+                    Ty::Err
+                }
+            },
         };
         Ok(AstNode::new(ty, lo.to(self.previous().span)))
     }
@@ -975,6 +1012,19 @@ impl<'a> Parser<'a> {
             TokenKind::Ident(ident) => {
                 self.advance();
                 Ok(AstNode::new(Ident::new(ident.into()), lo.to(self.previous().span)))
+            }
+            TokenKind::Literal(lit) if matches!(lit, Literal::F64(..) | Literal::I32(..) | Literal::U32(..)) => {
+                self.advance();
+
+                if matches!(self.current().kind, TokenKind::Ident(_)) {
+                    self.parse_ident()?;
+                }
+                let err = ParserError::InvalidIdentifierStart {
+                    src: self.session.get_named_source(),
+                    found: token.kind.clone(),
+                    span: token.span,
+                };
+                Err(err)
             }
             found => {
                 self.emit(ParserError::ExpectedIdentifier {

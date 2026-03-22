@@ -90,6 +90,7 @@ pub enum Ty {
     Fn(Vec<AstNode<Ty>>, Box<Option<AstNode<Ty>>>),
     Tuple(Vec<AstNode<Ty>>),
     Paren(Box<AstNode<Ty>>),
+    Err,
 }
 
 #[derive(Debug, Clone)]
@@ -102,6 +103,7 @@ pub enum Pattern {
     Tuple(Vec<AstNode<Pattern>>),
     Expr(Box<AstNode<Expr>>),
     Paren(Box<AstNode<Pattern>>),
+    Err,
 }
 
 #[derive(Debug, Clone)]
