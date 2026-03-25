@@ -18,6 +18,18 @@ pub enum ParserError {
         found: TokenKind,
     },
 
+    #[error("Expected item, found `{found}`")]
+    #[diagnostic(code(parser::expected_item), help("Expected an item"))]
+    ExpectedItem {
+        #[source_code]
+        src: NamedSource<String>,
+
+        #[label("expected item here")]
+        span: SourceSpan,
+
+        found: TokenKind,
+    },
+
     #[error("Identifiers cannot start with a number")]
     #[diagnostic(
         code(parser::invalid_identifier_start),

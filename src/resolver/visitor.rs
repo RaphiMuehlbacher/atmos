@@ -177,7 +177,6 @@ pub fn walk_item(visitor: &mut impl Visitor, item: &AstNode<Item>) {
             visit_list!(visitor, visit_generic_param, generics);
             visit_opt!(visitor, visit_type, ty);
         }
-        Item::Err => {}
     }
 }
 

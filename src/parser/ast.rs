@@ -145,7 +145,6 @@ pub enum Item {
     Const(ConstDecl),
     Use(UseItem),
     TyAlias(TyAliasDecl),
-    Err,
 }
 
 #[derive(Debug, Clone)]
@@ -484,7 +483,7 @@ impl Item {
             Item::ExternFn(ExternFnDecl { sig, .. }) => Some(&sig.node.ident),
             Item::Const(ConstDecl { ident, .. }) => Some(ident),
             Item::TyAlias(TyAliasDecl { ident, .. }) => Some(ident),
-            Item::Impl(_) | Item::Use(_) | Item::Err => None,
+            Item::Impl(_) | Item::Use(_) => None,
         }
     }
 }

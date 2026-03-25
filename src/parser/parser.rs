@@ -297,11 +297,10 @@ impl<'a> Parser<'a> {
         self.session.push_error(CompilerError::ParserError(error))
     }
 
-    fn recover_item(&mut self) -> AstNode<Item> {
+    fn recover_item(&mut self) {
         while !self.at_eof() && !self.current().begins_item() {
             self.advance();
         }
-        AstNode::err(Item::Err)
     }
 }
 impl<'a> Parser<'a> {
@@ -342,7 +341,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_item(&mut self) -> PResult<AstNode<Item>> {
-        match self.current().kind {
+        match &self.current().kind {
             TokenKind::Keyword(Kw::Fn) => self.parse_fn_item(),
             TokenKind::Keyword(Kw::Struct) => self.parse_struct_item(),
             TokenKind::Keyword(Kw::Enum) => self.parse_enum_item(),
@@ -353,7 +352,15 @@ impl<'a> Parser<'a> {
             TokenKind::Keyword(Kw::Const) => self.parse_const_item(),
             TokenKind::Keyword(Kw::Use) => self.parse_use_item(),
             TokenKind::Keyword(Kw::Type) => self.parse_type_alias_item(),
-            _ => panic!(),
+            found => {
+                let err = ParserError::ExpectedItem {
+                    src: self.session.get_named_source(),
+                    span: self.current().span,
+                    found: found.clone(),
+                };
+                self.recover_item();
+                Err(err)
+            }
         }
     }
 

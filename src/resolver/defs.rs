@@ -94,7 +94,6 @@ impl From<&Item> for DefKind {
             Item::Const(_) => DefKind::Const,
             Item::Use(_) => DefKind::Use,
             Item::TyAlias(_) => DefKind::TypeAlias,
-            Item::Err => panic!(),
         }
     }
 }

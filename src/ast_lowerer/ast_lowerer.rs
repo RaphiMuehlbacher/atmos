@@ -143,7 +143,6 @@ impl<'ast> AstLowerer<'ast> {
                     ty,
                 })
             }
-            ast::Item::Err => unreachable!(),
         };
 
         HirNode::new(hir_item, item.span)

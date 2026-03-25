@@ -137,7 +137,7 @@ impl<'a, 'r> visitor::Visitor for ModuleBuilder<'a, 'r> {
                     .module_arena
                     .define(parent, ty_alias_decl.ident.node.clone(), Binding::Item(*def_id));
             }
-            Item::Impl(_) | Item::Err => {}
+            Item::Impl(_) => {}
         }
         visitor::walk_item(self, item);
         self.parent = parent;
