@@ -452,6 +452,10 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_associated_items(&mut self) -> PResult<Vec<AstNode<AssociatedItem>>> {
+        if !self.current_is(&TokenKind::OpeningDelimiter(Delimiter::Brace)) {
+            return Err(self.unexpected_token(TokenKind::OpeningDelimiter(Delimiter::Brace)));
+        }
+
         let items = self.parse_delimited(
             TokenKind::OpeningDelimiter(Delimiter::Brace),
             TokenKind::ClosingDelimiter(Delimiter::Brace),
@@ -463,7 +467,7 @@ impl<'a> Parser<'a> {
     fn parse_associated_item(&mut self) -> PResult<AstNode<AssociatedItem>> {
         let lo = self.current().span;
 
-        let item = match self.current().kind {
+        let item = match &self.current().kind {
             TokenKind::Keyword(Kw::Fn) => {
                 let fn_decl = self.parse_fn_sig()?;
                 let body = match self.current().kind {
@@ -481,7 +485,13 @@ impl<'a> Parser<'a> {
                 let ty_alias = self.parse_type_alias()?;
                 AssociatedItem::Type(ty_alias)
             }
-            _ => todo!(),
+            found => {
+                return Err(ParserError::ExpectedAssociatedItem {
+                    src: self.session.get_named_source(),
+                    span: self.current().span,
+                    found: found.clone(),
+                });
+            }
         };
 
         Ok(AstNode::new(item, lo.to(self.previous().span)))

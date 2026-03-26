@@ -30,6 +30,18 @@ pub enum ParserError {
         found: TokenKind,
     },
 
+    #[error("Expected associated item, found `{found}`")]
+    #[diagnostic(code(parser::expected_associated_item), help("Expected associated item"))]
+    ExpectedAssociatedItem {
+        #[source_code]
+        src: NamedSource<String>,
+
+        #[label("expected associated item here")]
+        span: SourceSpan,
+
+        found: TokenKind,
+    },
+
     #[error("Expected expression, found `{found}`")]
     #[diagnostic(code(parser::expected_expression), help("Expected an expression"))]
     ExpectedExpression {
