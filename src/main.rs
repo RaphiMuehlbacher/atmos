@@ -8,5 +8,6 @@ fn main() {
     let content = fs::read_to_string(file_name).unwrap();
 
     let session = Session::new(NamedSource::new(file_name, content));
-    compile_source(session);
+    compile_source(&session);
+    session.emit_all();
 }
