@@ -240,10 +240,7 @@ impl<'sess> Lexer<'sess> {
 
         let suffix = self.peek().is_some_and(|c| self.is_ident_start(c)).then(|| {
             self.advance();
-            match self.lex_identifier() {
-                TokenKind::Ident(ident) => ident,
-                _ => unreachable!(),
-            }
+            self.collect_identifier_string()
         });
 
         let literal = if has_dot {
@@ -255,7 +252,7 @@ impl<'sess> Lexer<'sess> {
         TokenKind::Literal(literal)
     }
 
-    fn lex_identifier(&mut self) -> TokenKind {
+    fn collect_identifier_string(&mut self) -> String {
         let mut value = String::new();
         value.push(self.session.get_source()[self.position - 1..].chars().next().unwrap());
 
@@ -267,6 +264,12 @@ impl<'sess> Lexer<'sess> {
                 break;
             }
         }
+
+        value
+    }
+
+    fn lex_identifier(&mut self) -> TokenKind {
+        let value = self.collect_identifier_string();
 
         match value.as_str() {
             "let" => TokenKind::Keyword(Kw::Let),
