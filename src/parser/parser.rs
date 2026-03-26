@@ -1507,8 +1507,12 @@ impl<'a> Parser<'a> {
                 };
                 Expr::Return(ReturnExpr { value: expr })
             }
-            _ => {
-                panic!("{}", self.current().kind)
+            found => {
+                return Err(ParserError::ExpectedExpression {
+                    src: self.session.get_named_source(),
+                    span: self.current().span,
+                    found: found.clone(),
+                });
             }
         };
 

@@ -238,13 +238,13 @@ impl<'sess> Lexer<'sess> {
             }
         }
 
-        let suffix = self
-            .peek()
-            .filter(|c| self.is_ident_start(*c))
-            .and_then(|_| match self.lex_identifier() {
-                TokenKind::Ident(ident) => Some(ident),
-                _ => None,
-            });
+        let suffix = self.peek().is_some_and(|c| self.is_ident_start(c)).then(|| {
+            self.advance();
+            match self.lex_identifier() {
+                TokenKind::Ident(ident) => ident,
+                _ => unreachable!(),
+            }
+        });
 
         let literal = if has_dot {
             Literal::Float { value, suffix }
