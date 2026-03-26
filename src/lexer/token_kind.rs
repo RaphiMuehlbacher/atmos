@@ -13,9 +13,8 @@ pub enum TokenKind {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Literal {
-    I32(i32),
-    U32(u32),
-    F64(f64),
+    Integer { value: String, suffix: Option<String> },
+    Float { value: String, suffix: Option<String> },
     Str(String),
 }
 
@@ -153,9 +152,14 @@ impl Display for TokenKind {
 impl Display for Literal {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
-            Literal::I32(n) => write!(f, "{}", n),
-            Literal::U32(n) => write!(f, "{}", n),
-            Literal::F64(n) => write!(f, "{}", n),
+            Literal::Integer { value, suffix } => match suffix {
+                Some(s) => write!(f, "{}{}", value, s),
+                None => write!(f, "{}", value),
+            },
+            Literal::Float { value, suffix } => match suffix {
+                Some(s) => write!(f, "{}{}", value, s),
+                None => write!(f, "{}", value),
+            },
             Literal::Str(s) => write!(f, "\"{}\"", s),
         }
     }

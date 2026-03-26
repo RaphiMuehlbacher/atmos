@@ -95,4 +95,36 @@ pub enum ParserError {
 
         delimiter: TokenKind,
     },
+
+    #[error("Literal overflow: {message}")]
+    #[diagnostic(
+        code(parser::literal_overflow),
+        help("The literal value is too large for the specified type")
+    )]
+    LiteralOverflow {
+        #[source_code]
+        src: NamedSource<String>,
+
+        #[label("literal is too large here")]
+        span: SourceSpan,
+
+        message: String,
+    },
+
+    #[error("Invalid literal suffix `{suffix}` for {literal_type} literal")]
+    #[diagnostic(
+        code(parser::invalid_literal_suffix),
+        help("Valid suffixes for {literal_type} literals are: {valid_suffixes}")
+    )]
+    InvalidLiteralSuffix {
+        #[source_code]
+        src: NamedSource<String>,
+
+        #[label("invalid suffix here")]
+        span: SourceSpan,
+
+        suffix: String,
+        literal_type: String,
+        valid_suffixes: String,
+    },
 }

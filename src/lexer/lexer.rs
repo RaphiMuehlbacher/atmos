@@ -229,52 +229,30 @@ impl<'sess> Lexer<'sess> {
                     value.push(c);
                     self.advance();
                 }
-                '.' if !has_dot => {
-                    if let Some(next) = self.peek_next() {
-                        if next.is_ascii_digit() {
-                            has_dot = true;
-                            value.push(c);
-                            self.advance();
-                        } else {
-                            break;
-                        }
-                    } else {
-                        break;
-                    }
+                '.' if !has_dot && self.peek_next().is_some_and(|c| c.is_ascii_digit()) => {
+                    has_dot = true;
+                    value.push(c);
+                    self.advance();
                 }
                 _ => break,
             }
         }
 
-        let suffix_start = self.position;
-        let suffix = if let Some(next) = self.peek() {
-            if self.is_ident_start(next) {
-                if let TokenKind::Ident(ident) = self.lex_identifier() {
-                    Some(ident)
-                } else {
-                    None
-                }
-            } else {
-                None
-            }
+        let suffix = self
+            .peek()
+            .filter(|c| self.is_ident_start(*c))
+            .and_then(|_| match self.lex_identifier() {
+                TokenKind::Ident(ident) => Some(ident),
+                _ => None,
+            });
+
+        let literal = if has_dot {
+            Literal::Float { value, suffix }
         } else {
-            None
+            Literal::Integer { value, suffix }
         };
 
-        if has_dot {
-            let parsed: f64 = value.parse().unwrap();
-            TokenKind::Literal(Literal::F64(parsed))
-        } else {
-            match suffix.as_deref() {
-                Some("i32") => TokenKind::Literal(Literal::I32(value.parse().unwrap())),
-                Some("u32") => TokenKind::Literal(Literal::U32(value.parse().unwrap())),
-                Some("f64") => TokenKind::Literal(Literal::F64(value.parse().unwrap())),
-                _ => {
-                    self.position = suffix_start;
-                    TokenKind::Literal(Literal::I32(value.parse().unwrap()))
-                }
-            }
-        }
+        TokenKind::Literal(literal)
     }
 
     fn lex_identifier(&mut self) -> TokenKind {

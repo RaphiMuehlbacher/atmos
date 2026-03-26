@@ -12,6 +12,7 @@ use crate::parser::ast::{
 };
 use crate::parser::ParserError;
 use crate::Session;
+use miette::SourceSpan;
 
 type PResult<T> = Result<T, ParserError>;
 
@@ -52,9 +53,8 @@ impl<'a> Parser<'a> {
 
     fn current_is(&self, kind: &TokenKind) -> bool {
         match (&self.current().kind, kind) {
-            (TokenKind::Literal(Literal::I32(_)), TokenKind::Literal(Literal::I32(_))) => true,
-            (TokenKind::Literal(Literal::U32(_)), TokenKind::Literal(Literal::U32(_))) => true,
-            (TokenKind::Literal(Literal::F64(_)), TokenKind::Literal(Literal::F64(_))) => true,
+            (TokenKind::Literal(Literal::Integer { .. }), TokenKind::Literal(Literal::Integer { .. })) => true,
+            (TokenKind::Literal(Literal::Float { .. }), TokenKind::Literal(Literal::Float { .. })) => true,
             (TokenKind::Literal(Literal::Str(_)), TokenKind::Literal(Literal::Str(_))) => true,
             (TokenKind::Ident(_), TokenKind::Ident(_)) => true,
             (a, b) => a == b,
@@ -105,6 +105,14 @@ impl<'a> Parser<'a> {
             span,
             expected,
             found: self.current().kind.clone(),
+        }
+    }
+
+    fn literal_overflow(&self, message: impl Into<String>, span: SourceSpan) -> ParserError {
+        ParserError::LiteralOverflow {
+            src: self.session.get_named_source(),
+            span,
+            message: message.into(),
         }
     }
 }
@@ -787,7 +795,7 @@ impl<'a> Parser<'a> {
 
     fn number_before_ident(&self) -> bool {
         if let TokenKind::Literal(lit) = &self.current().kind
-            && matches!(lit, Literal::F64(..) | Literal::I32(..) | Literal::U32(..))
+            && matches!(lit, Literal::Integer { .. } | Literal::Float { .. })
             && matches!(self.peek().kind, TokenKind::Ident(_))
         {
             true
@@ -1003,7 +1011,7 @@ impl<'a> Parser<'a> {
                 self.advance();
                 Ok(AstNode::new(Ident::new(ident.into()), lo.to(self.previous().span)))
             }
-            TokenKind::Literal(lit) if matches!(lit, Literal::F64(..) | Literal::I32(..) | Literal::U32(..)) => {
+            TokenKind::Literal(lit) if matches!(lit, Literal::Integer { .. } | Literal::Float { .. }) => {
                 self.advance();
 
                 let err = if matches!(self.current().kind, TokenKind::Ident(_)) {
@@ -1362,11 +1370,63 @@ impl<'a> Parser<'a> {
                 Expr::Literal(LiteralExpr::Unit)
             }
             TokenKind::Literal(lit) => {
+                let token_span = self.current().span;
                 let expr = match lit {
-                    Literal::I32(i32) => Expr::Literal(LiteralExpr::I32(*i32)),
-                    Literal::U32(u32) => Expr::Literal(LiteralExpr::U32(*u32)),
-                    Literal::F64(f64) => Expr::Literal(LiteralExpr::F64(*f64)),
                     Literal::Str(str) => Expr::Literal(LiteralExpr::Str(str.clone())),
+                    Literal::Integer { value, suffix } => match suffix.as_deref() {
+                        Some("u32") => match value.parse() {
+                            Ok(parsed) => Expr::Literal(LiteralExpr::U32(parsed)),
+                            Err(_) => {
+                                self.emit(self.literal_overflow(
+                                    format!("integer literal `{}` is too large for type `u32`", value),
+                                    token_span,
+                                ));
+                                Expr::Literal(LiteralExpr::U32(0))
+                            }
+                        },
+                        Some("i32") | None => match value.parse() {
+                            Ok(parsed) => Expr::Literal(LiteralExpr::I32(parsed)),
+                            Err(_) => {
+                                self.emit(self.literal_overflow(
+                                    format!("integer literal `{}` is too large for type `i32`", value),
+                                    token_span,
+                                ));
+                                Expr::Literal(LiteralExpr::I32(0))
+                            }
+                        },
+                        Some(invalid_suffix) => {
+                            self.emit(ParserError::InvalidLiteralSuffix {
+                                src: self.session.get_named_source(),
+                                span: token_span,
+                                suffix: invalid_suffix.to_string(),
+                                literal_type: "integer".to_string(),
+                                valid_suffixes: "u32, i32, or no suffix".to_string(),
+                            });
+                            Expr::Literal(LiteralExpr::I32(0))
+                        }
+                    },
+                    Literal::Float { value, suffix } => match suffix.as_deref() {
+                        Some("f64") | None => match value.parse() {
+                            Ok(parsed) => Expr::Literal(LiteralExpr::F64(parsed)),
+                            Err(_) => {
+                                self.emit(self.literal_overflow(
+                                    format!("float literal `{}` is invalid for type `f64`", value),
+                                    token_span,
+                                ));
+                                Expr::Literal(LiteralExpr::F64(0.0))
+                            }
+                        },
+                        Some(invalid_suffix) => {
+                            self.emit(ParserError::InvalidLiteralSuffix {
+                                src: self.session.get_named_source(),
+                                span: token_span,
+                                suffix: invalid_suffix.to_string(),
+                                literal_type: "float".to_string(),
+                                valid_suffixes: "f32 or no suffix".to_string(),
+                            });
+                            Expr::Literal(LiteralExpr::F64(0.0))
+                        }
+                    },
                 };
                 self.advance();
                 expr
