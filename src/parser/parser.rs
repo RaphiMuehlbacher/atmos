@@ -562,6 +562,10 @@ impl<'a> Parser<'a> {
         let ident = self.parse_ident()?;
         let generics = self.parse_generic_params()?;
 
+        if !self.current_is(&TokenKind::OpeningDelimiter(Delimiter::Brace)) {
+            return Err(self.unexpected_token(TokenKind::OpeningDelimiter(Delimiter::Brace)));
+        }
+
         let variants = self.parse_separated_delimited(
             TokenKind::OpeningDelimiter(Delimiter::Brace),
             TokenKind::ClosingDelimiter(Delimiter::Brace),
@@ -627,7 +631,9 @@ impl<'a> Parser<'a> {
         let variant = self.parse_variant_data()?;
 
         if !matches!(variant.node, VariantData::Struct { .. }) {
-            self.consume(&[TokenKind::Punctuation(Punct::Semicolon)]);
+            if !self.consume(&[TokenKind::Punctuation(Punct::Semicolon)]) {
+                self.emit(self.unexpected_token(TokenKind::Punctuation(Punct::Semicolon)));
+            }
         }
 
         Ok(AstNode::new(
