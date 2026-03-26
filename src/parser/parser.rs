@@ -92,6 +92,21 @@ impl<'a> Parser<'a> {
         self.restrictions = old;
         result
     }
+
+    fn unexpected_token(&self, expected: TokenKind) -> ParserError {
+        let span = if self.at_eof() {
+            self.previous().span
+        } else {
+            self.current().span
+        };
+
+        ParserError::UnexpectedToken {
+            src: self.session.get_named_source(),
+            span,
+            expected,
+            found: self.current().kind.clone(),
+        }
+    }
 }
 
 impl<'a> Parser<'a> {
@@ -119,13 +134,7 @@ impl<'a> Parser<'a> {
         if self.current_is(&open) {
             self.advance();
         } else {
-            self.emit(ParserError::UnexpectedToken {
-                src: self.session.get_named_source(),
-                span: self.current().span,
-                found: self.current().kind.clone(),
-                expected: open,
-            });
-
+            self.emit(self.unexpected_token(open));
             delimiter_err_emitted = true;
 
             if self.is_junk_for_delim(&self.current().kind.clone()) {
@@ -172,13 +181,8 @@ impl<'a> Parser<'a> {
                     });
                     self.advance();
                 }
-                other => {
-                    self.emit(ParserError::UnexpectedToken {
-                        src: self.session.get_named_source(),
-                        span: self.current().span,
-                        found: other.clone(),
-                        expected: close,
-                    });
+                _ => {
+                    self.emit(self.unexpected_token(close));
                 }
             }
         }
@@ -201,12 +205,7 @@ impl<'a> Parser<'a> {
         if self.current_is(&open) {
             self.advance();
         } else {
-            self.emit(ParserError::UnexpectedToken {
-                src: self.session.get_named_source(),
-                span: self.current().span,
-                found: self.current().kind.clone(),
-                expected: open,
-            });
+            self.emit(self.unexpected_token(open));
 
             delimiter_err_emitted = true;
 
@@ -264,13 +263,8 @@ impl<'a> Parser<'a> {
                     });
                     self.advance();
                 }
-                other => {
-                    self.emit(ParserError::UnexpectedToken {
-                        src: self.session.get_named_source(),
-                        span: self.current().span,
-                        found: other.clone(),
-                        expected: close,
-                    });
+                _ => {
+                    self.emit(self.unexpected_token(close));
                 }
             }
         }
@@ -697,6 +691,10 @@ impl<'a> Parser<'a> {
 
     /// starts at '(', ends after ')'
     fn parse_params(&mut self) -> PResult<Vec<AstNode<Param>>> {
+        if !self.current_is(&TokenKind::OpeningDelimiter(Delimiter::Paren)) {
+            return Err(self.unexpected_token(TokenKind::OpeningDelimiter(Delimiter::Paren)));
+        }
+
         Ok(self.parse_separated_delimited(
             TokenKind::OpeningDelimiter(Delimiter::Paren),
             TokenKind::ClosingDelimiter(Delimiter::Paren),
@@ -711,12 +709,7 @@ impl<'a> Parser<'a> {
 
         let pattern = self.parse_pattern()?;
         if !self.consume(&[TokenKind::Punctuation(Punct::Colon)]) {
-            self.emit(ParserError::UnexpectedToken {
-                src: self.session.get_named_source(),
-                span: self.current().span,
-                found: self.current().kind.clone(),
-                expected: TokenKind::Punctuation(Punct::Colon),
-            });
+            self.emit(self.unexpected_token(TokenKind::Punctuation(Punct::Colon)));
             if !matches!(self.current().kind, TokenKind::Ident(_)) {
                 self.advance();
             }
@@ -961,22 +954,12 @@ impl<'a> Parser<'a> {
                 let inner_ty = self.parse_type()?;
 
                 if !self.consume(&[TokenKind::Punctuation(Punct::Semicolon)]) {
-                    self.emit(ParserError::UnexpectedToken {
-                        src: self.session.get_named_source(),
-                        span: self.current().span,
-                        found: self.current().kind.clone(),
-                        expected: TokenKind::Punctuation(Punct::Semicolon),
-                    });
+                    self.emit(self.unexpected_token(TokenKind::Punctuation(Punct::Semicolon)));
                 }
                 let len = self.parse_expression()?;
 
                 if !self.consume(&[TokenKind::ClosingDelimiter(Delimiter::Bracket)]) {
-                    self.emit(ParserError::UnexpectedToken {
-                        src: self.session.get_named_source(),
-                        span: self.current().span,
-                        found: self.current().kind.clone(),
-                        expected: TokenKind::ClosingDelimiter(Delimiter::Bracket),
-                    });
+                    self.emit(self.unexpected_token(TokenKind::ClosingDelimiter(Delimiter::Bracket)));
                 }
                 Ty::Array(Box::new(inner_ty), Box::new(len))
             }
@@ -1114,12 +1097,7 @@ impl<'a> Parser<'a> {
         };
 
         if !self.consume(&[TokenKind::Punctuation(Punct::Semicolon)]) {
-            self.emit(ParserError::UnexpectedToken {
-                src: self.session.get_named_source(),
-                span: self.current().span,
-                found: self.current().kind.clone(),
-                expected: TokenKind::Punctuation(Punct::Semicolon),
-            });
+            self.emit(self.unexpected_token(TokenKind::Punctuation(Punct::Semicolon)));
         }
         Ok(AstNode::new(
             Stmt::Let(LetStmt {
@@ -1207,12 +1185,7 @@ impl<'a> Parser<'a> {
                     self.advance();
                     let index_expr = self.parse_expression()?;
                     if !self.consume(&[TokenKind::ClosingDelimiter(Delimiter::Bracket)]) {
-                        self.emit(ParserError::UnexpectedToken {
-                            src: self.session.get_named_source(),
-                            span: self.current().span,
-                            found: self.current().kind.clone(),
-                            expected: TokenKind::ClosingDelimiter(Delimiter::Bracket),
-                        });
+                        self.emit(self.unexpected_token(TokenKind::ClosingDelimiter(Delimiter::Bracket)));
                     }
 
                     lhs = AstNode::new(
