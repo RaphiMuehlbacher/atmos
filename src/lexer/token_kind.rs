@@ -153,9 +153,9 @@ impl Display for TokenKind {
 impl Display for Literal {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
-            Literal::I32(n) => write!(f, "{}i32", n),
-            Literal::U32(n) => write!(f, "{}u32", n),
-            Literal::F64(n) => write!(f, "{}f64", n),
+            Literal::I32(n) => write!(f, "{}", n),
+            Literal::U32(n) => write!(f, "{}", n),
+            Literal::F64(n) => write!(f, "{}", n),
             Literal::Str(s) => write!(f, "\"{}\"", s),
         }
     }

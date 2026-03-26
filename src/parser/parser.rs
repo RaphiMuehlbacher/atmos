@@ -1023,23 +1023,36 @@ impl<'a> Parser<'a> {
             TokenKind::Literal(lit) if matches!(lit, Literal::F64(..) | Literal::I32(..) | Literal::U32(..)) => {
                 self.advance();
 
-                if matches!(self.current().kind, TokenKind::Ident(_)) {
-                    self.parse_ident()?;
-                }
-                let err = ParserError::InvalidIdentifierStart {
-                    src: self.session.get_named_source(),
-                    found: token.kind.clone(),
-                    span: token.span,
+                let err = if matches!(self.current().kind, TokenKind::Ident(_)) {
+                    self.parse_ident().expect("The next token must be a valid Ident");
+                    ParserError::InvalidIdentifierStart {
+                        src: self.session.get_named_source(),
+                        found: token.kind.clone(),
+                        span: token.span,
+                    }
+                } else {
+                    ParserError::ExpectedIdentifier {
+                        src: self.session.get_named_source(),
+                        found: token.kind.clone(),
+                        span: token.span,
+                    }
                 };
+
                 Err(err)
             }
             found => {
-                self.emit(ParserError::ExpectedIdentifier {
+                let token_span = if found == &TokenKind::EOF {
+                    self.previous().span
+                } else {
+                    self.current().span
+                };
+
+                let err = ParserError::ExpectedIdentifier {
                     src: self.session.get_named_source(),
                     found: found.clone(),
-                    span: token.span,
-                });
-                Ok(AstNode::err(Ident::err()))
+                    span: token_span,
+                };
+                Err(err)
             }
         }
     }
