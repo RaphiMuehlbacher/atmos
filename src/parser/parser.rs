@@ -82,6 +82,34 @@ impl<'a> Parser<'a> {
         false
     }
 
+    fn expect(&mut self, expected: &TokenKind) -> PResult<()> {
+        if self.current_is(expected) {
+            Ok(())
+        } else {
+            Err(self.unexpected_token(expected))
+        }
+    }
+
+    fn expect_consume(&mut self, expected: &TokenKind) -> PResult<()> {
+        if self.consume(&[expected.clone()]) {
+            Ok(())
+        } else {
+            Err(self.unexpected_token(expected))
+        }
+    }
+
+    fn expect_emit(&mut self, expected: &TokenKind) {
+        if !self.current_is(expected) {
+            self.emit(self.unexpected_token(expected));
+        }
+    }
+
+    fn expect_consume_emit(&mut self, expected: &TokenKind) {
+        if !self.consume(&[expected.clone()]) {
+            self.emit(self.unexpected_token(expected));
+        }
+    }
+
     fn with_restrictions<T, F>(&mut self, restrictions: Restrictions, f: F) -> T
     where
         F: FnOnce(&mut Self) -> T,
@@ -93,17 +121,19 @@ impl<'a> Parser<'a> {
         result
     }
 
-    fn unexpected_token(&self, expected: TokenKind) -> ParserError {
-        let span = if self.at_eof() {
+    fn diagnostic_span(&self) -> SourceSpan {
+        if self.at_eof() {
             self.previous().span
         } else {
             self.current().span
-        };
-
+        }
+    }
+    fn unexpected_token(&self, expected: &TokenKind) -> ParserError {
+        let span = self.diagnostic_span();
         ParserError::UnexpectedToken {
             src: self.session.get_named_source(),
             span,
-            expected,
+            expected: expected.clone(),
             found: self.current().kind.clone(),
         }
     }
@@ -143,7 +173,7 @@ impl<'a> Parser<'a> {
         if self.current_is(&open) {
             self.advance();
         } else {
-            self.emit(self.unexpected_token(open));
+            self.emit(self.unexpected_token(&open));
             delimiter_err_emitted = true;
 
             if self.is_junk_for_delim(&self.current().kind.clone()) {
@@ -177,9 +207,10 @@ impl<'a> Parser<'a> {
         } else if !delimiter_err_emitted {
             match &self.current().kind {
                 TokenKind::EOF => {
+                    let span = self.diagnostic_span();
                     return Err(ParserError::UnclosedDelimiter {
                         src: self.session.get_named_source(),
-                        span: self.current().span,
+                        span,
                         delimiter: close,
                     });
                 }
@@ -194,7 +225,7 @@ impl<'a> Parser<'a> {
                     self.advance();
                 }
                 _ => {
-                    self.emit(self.unexpected_token(close));
+                    self.emit(self.unexpected_token(&close));
                 }
             }
         }
@@ -218,7 +249,7 @@ impl<'a> Parser<'a> {
         if self.current_is(&open) {
             self.advance();
         } else {
-            self.emit(self.unexpected_token(open));
+            self.emit(self.unexpected_token(&open));
             delimiter_err_emitted = true;
 
             if self.is_junk_for_delim(&self.current().kind.clone()) {
@@ -262,9 +293,10 @@ impl<'a> Parser<'a> {
         } else if !delimiter_err_emitted {
             match &self.current().kind {
                 TokenKind::EOF => {
+                    let span = self.diagnostic_span();
                     return Err(ParserError::UnclosedDelimiter {
                         src: self.session.get_named_source(),
-                        span: self.current().span,
+                        span,
                         delimiter: close,
                     });
                 }
@@ -279,7 +311,7 @@ impl<'a> Parser<'a> {
                     self.advance();
                 }
                 _ => {
-                    self.emit(self.unexpected_token(close));
+                    self.emit(self.unexpected_token(&close));
                 }
             }
         }
@@ -378,7 +410,7 @@ impl<'a> Parser<'a> {
         let ident = self.parse_ident()?;
         let generics = self.parse_generic_params()?;
 
-        self.consume(&[TokenKind::Punctuation(Punct::Eq)]);
+        self.expect_consume(&TokenKind::Punctuation(Punct::Eq))?;
 
         let ty = if self.check(&[TokenKind::Punctuation(Punct::Semicolon)]) {
             self.advance();
@@ -400,7 +432,7 @@ impl<'a> Parser<'a> {
         self.advance();
 
         let sig = self.parse_fn_sig()?;
-        self.consume(&[TokenKind::Punctuation(Punct::Semicolon)]);
+        self.expect_consume_emit(&TokenKind::Punctuation(Punct::Semicolon));
 
         Ok(AstNode::new(
             Item::ExternFn(ExternFnDecl { sig }),
@@ -421,11 +453,11 @@ impl<'a> Parser<'a> {
             None
         };
 
-        self.consume(&[TokenKind::Punctuation(Punct::Eq)]);
+        self.expect(&TokenKind::Punctuation(Punct::Eq))?;
 
         let expr = self.parse_expression()?;
 
-        self.consume(&[TokenKind::Punctuation(Punct::Semicolon)]);
+        self.expect(&TokenKind::Punctuation(Punct::Semicolon))?;
 
         Ok(AstNode::new(
             Item::Const(ConstDecl {
@@ -443,7 +475,7 @@ impl<'a> Parser<'a> {
         self.advance();
 
         let path = self.parse_path()?;
-        self.consume(&[TokenKind::Punctuation(Punct::Semicolon)]);
+        self.expect_consume_emit(&TokenKind::Punctuation(Punct::Semicolon));
 
         Ok(AstNode::new(Item::Use(UseItem { path }), lo.to(self.previous().span)))
     }
@@ -457,9 +489,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_associated_items(&mut self) -> PResult<Vec<AstNode<AssociatedItem>>> {
-        if !self.current_is(&TokenKind::OpeningDelimiter(Delimiter::Brace)) {
-            return Err(self.unexpected_token(TokenKind::OpeningDelimiter(Delimiter::Brace)));
-        }
+        self.expect(&TokenKind::OpeningDelimiter(Delimiter::Brace))?;
 
         let items = self.parse_delimited(
             TokenKind::OpeningDelimiter(Delimiter::Brace),
@@ -548,6 +578,8 @@ impl<'a> Parser<'a> {
         self.advance();
 
         let ident = self.parse_ident()?;
+        self.expect(&TokenKind::OpeningDelimiter(Delimiter::Brace))?;
+
         let items = self.parse_delimited(
             TokenKind::OpeningDelimiter(Delimiter::Brace),
             TokenKind::ClosingDelimiter(Delimiter::Brace),
@@ -567,9 +599,7 @@ impl<'a> Parser<'a> {
         let ident = self.parse_ident()?;
         let generics = self.parse_generic_params()?;
 
-        if !self.current_is(&TokenKind::OpeningDelimiter(Delimiter::Brace)) {
-            return Err(self.unexpected_token(TokenKind::OpeningDelimiter(Delimiter::Brace)));
-        }
+        self.expect(&TokenKind::OpeningDelimiter(Delimiter::Brace))?;
 
         let variants = self.parse_separated_delimited(
             TokenKind::OpeningDelimiter(Delimiter::Brace),
@@ -636,9 +666,7 @@ impl<'a> Parser<'a> {
         let variant = self.parse_variant_data()?;
 
         if !matches!(variant.node, VariantData::Struct { .. }) {
-            if !self.consume(&[TokenKind::Punctuation(Punct::Semicolon)]) {
-                self.emit(self.unexpected_token(TokenKind::Punctuation(Punct::Semicolon)));
-            }
+            self.expect_consume_emit(&TokenKind::Punctuation(Punct::Semicolon));
         }
 
         Ok(AstNode::new(
@@ -720,9 +748,7 @@ impl<'a> Parser<'a> {
 
     /// starts at '(', ends after ')'
     fn parse_params(&mut self) -> PResult<Vec<AstNode<Param>>> {
-        if !self.current_is(&TokenKind::OpeningDelimiter(Delimiter::Paren)) {
-            return Err(self.unexpected_token(TokenKind::OpeningDelimiter(Delimiter::Paren)));
-        }
+        self.expect(&TokenKind::OpeningDelimiter(Delimiter::Paren))?;
 
         Ok(self.parse_separated_delimited(
             TokenKind::OpeningDelimiter(Delimiter::Paren),
@@ -737,12 +763,8 @@ impl<'a> Parser<'a> {
         let lo = self.current().span;
 
         let pattern = self.parse_pattern()?;
-        if !self.consume(&[TokenKind::Punctuation(Punct::Colon)]) {
-            self.emit(self.unexpected_token(TokenKind::Punctuation(Punct::Colon)));
-            if !matches!(self.current().kind, TokenKind::Ident(_)) {
-                self.advance();
-            }
-        }
+        self.expect_consume_emit(&TokenKind::Punctuation(Punct::Colon));
+
         let ty = self.parse_type()?;
         Ok(AstNode::new(
             Param {
@@ -863,7 +885,7 @@ impl<'a> Parser<'a> {
         let lo = self.current().span;
 
         let ident = self.parse_ident()?;
-        self.consume(&[TokenKind::Punctuation(Punct::Colon)]);
+        self.expect_consume_emit(&TokenKind::Punctuation(Punct::Colon));
         let pattern = self.parse_pattern()?;
 
         Ok(AstNode::new(
@@ -990,12 +1012,12 @@ impl<'a> Parser<'a> {
                 let inner_ty = self.parse_type()?;
 
                 if !self.consume(&[TokenKind::Punctuation(Punct::Semicolon)]) {
-                    self.emit(self.unexpected_token(TokenKind::Punctuation(Punct::Semicolon)));
+                    self.emit(self.unexpected_token(&TokenKind::Punctuation(Punct::Semicolon)));
                 }
                 let len = self.parse_expression()?;
 
                 if !self.consume(&[TokenKind::ClosingDelimiter(Delimiter::Bracket)]) {
-                    self.emit(self.unexpected_token(TokenKind::ClosingDelimiter(Delimiter::Bracket)));
+                    self.emit(self.unexpected_token(&TokenKind::ClosingDelimiter(Delimiter::Bracket)));
                 }
                 Ty::Array(Box::new(inner_ty), Box::new(len))
             }
@@ -1076,7 +1098,7 @@ impl<'a> Parser<'a> {
     /// start at '{', end at '}'
     fn parse_block(&mut self) -> PResult<AstNode<BlockExpr>> {
         let lo = self.current().span;
-        self.advance();
+        self.expect_consume(&TokenKind::OpeningDelimiter(Delimiter::Brace))?;
 
         let mut stmts = vec![];
 
@@ -1130,7 +1152,7 @@ impl<'a> Parser<'a> {
         };
 
         if !self.consume(&[TokenKind::Punctuation(Punct::Semicolon)]) {
-            self.emit(self.unexpected_token(TokenKind::Punctuation(Punct::Semicolon)));
+            self.emit(self.unexpected_token(&TokenKind::Punctuation(Punct::Semicolon)));
         }
         Ok(AstNode::new(
             Stmt::Let(LetStmt {
@@ -1218,7 +1240,7 @@ impl<'a> Parser<'a> {
                     self.advance();
                     let index_expr = self.parse_expression()?;
                     if !self.consume(&[TokenKind::ClosingDelimiter(Delimiter::Bracket)]) {
-                        self.emit(self.unexpected_token(TokenKind::ClosingDelimiter(Delimiter::Bracket)));
+                        self.emit(self.unexpected_token(&TokenKind::ClosingDelimiter(Delimiter::Bracket)));
                     }
 
                     lhs = AstNode::new(
