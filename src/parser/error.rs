@@ -54,6 +54,18 @@ pub enum ParserError {
         found: TokenKind,
     },
 
+    #[error("Expected pattern, found `{found}`")]
+    #[diagnostic(code(parser::expected_pattern), help("Expected a pattern"))]
+    ExpectedPattern {
+        #[source_code]
+        src: NamedSource<String>,
+
+        #[label("expected pattern here")]
+        span: SourceSpan,
+
+        found: TokenKind,
+    },
+
     #[error("Identifiers cannot start with a number")]
     #[diagnostic(
         code(parser::invalid_identifier_start),
@@ -93,7 +105,7 @@ pub enum ParserError {
 
         found_delimiter: TokenKind,
     },
-    #[error("Expected '{expected:?}' but found '{found:?}'")]
+    #[error("Expected '{expected}' but found '{found}'")]
     #[diagnostic(code(parser::mismatched_delimiter))]
     MismatchedDelimiter {
         #[source_code]
@@ -109,7 +121,7 @@ pub enum ParserError {
         expected: TokenKind,
     },
     #[error("Unclosed delimiter")]
-    #[diagnostic(code(parse::unclosed_delimiter), help("missing closing {delimiter:?}"))]
+    #[diagnostic(code(parse::unclosed_delimiter), help("missing closing {delimiter}"))]
     UnclosedDelimiter {
         #[source_code]
         src: NamedSource<String>,

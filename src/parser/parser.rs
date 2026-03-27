@@ -124,20 +124,21 @@ impl<'a> Parser<'a> {
         close: TokenKind,
         separator: TokenKind,
         parse_element: F,
-    ) -> Vec<T>
+    ) -> PResult<Vec<T>>
     where
         F: FnMut(&mut Self) -> PResult<T>,
     {
         self.parse_separated_delimited_with_trailing(open, close, separator, parse_element)
-            .0
+            .map(|e| e.0)
     }
 
-    fn parse_delimited<T, F>(&mut self, open: TokenKind, close: TokenKind, mut parse_element: F) -> Vec<T>
+    fn parse_delimited<T, F>(&mut self, open: TokenKind, close: TokenKind, mut parse_element: F) -> PResult<Vec<T>>
     where
         F: FnMut(&mut Self) -> PResult<T>,
     {
         let open_span = self.current().span;
         let mut delimiter_err_emitted = false;
+        let mut parse_element_err = None;
 
         if self.current_is(&open) {
             self.advance();
@@ -159,21 +160,24 @@ impl<'a> Parser<'a> {
             match parse_element(self) {
                 Ok(element) => elements.push(element),
                 Err(err) => {
-                    self.emit(err);
-                    // Recover to closing delimiter
-                    while !self.at_eof() && !self.current_is(&close) {
-                        self.advance();
-                    }
-                    break;
+                    match parse_element_err {
+                        Some(err) => {
+                            return Err(err);
+                        }
+                        None => {
+                            parse_element_err = Some(err);
+                        }
+                    };
                 }
             }
         }
+
         if self.current_is(&close) {
             self.advance();
         } else if !delimiter_err_emitted {
             match &self.current().kind {
                 TokenKind::EOF => {
-                    self.emit(ParserError::UnclosedDelimiter {
+                    return Err(ParserError::UnclosedDelimiter {
                         src: self.session.get_named_source(),
                         span: self.current().span,
                         delimiter: close,
@@ -194,7 +198,7 @@ impl<'a> Parser<'a> {
                 }
             }
         }
-        elements
+        Ok(elements)
     }
 
     fn parse_separated_delimited_with_trailing<T, F>(
@@ -203,18 +207,18 @@ impl<'a> Parser<'a> {
         close: TokenKind,
         separator: TokenKind,
         mut parse_element: F,
-    ) -> (Vec<T>, bool)
+    ) -> PResult<(Vec<T>, bool)>
     where
         F: FnMut(&mut Self) -> PResult<T>,
     {
         let open_span = self.current().span;
         let mut delimiter_err_emitted = false;
+        let mut parse_element_err = None;
 
         if self.current_is(&open) {
             self.advance();
         } else {
             self.emit(self.unexpected_token(open));
-
             delimiter_err_emitted = true;
 
             if self.is_junk_for_delim(&self.current().kind.clone()) {
@@ -232,8 +236,14 @@ impl<'a> Parser<'a> {
             match parse_element(self) {
                 Ok(element) => elements.push(element),
                 Err(err) => {
-                    self.emit(err);
-                    self.recover_to_separator_or_closing(&close, &separator);
+                    match parse_element_err {
+                        Some(err) => {
+                            return Err(err);
+                        }
+                        None => {
+                            parse_element_err = Some(err);
+                        }
+                    };
                 }
             }
 
@@ -243,9 +253,6 @@ impl<'a> Parser<'a> {
                     break;
                 }
             } else if !self.current_is(&close) {
-                self.recover_to_separator_or_closing(&close, &separator);
-                trailing_comma = false;
-            } else {
                 trailing_comma = false;
             }
         }
@@ -255,7 +262,7 @@ impl<'a> Parser<'a> {
         } else if !delimiter_err_emitted {
             match &self.current().kind {
                 TokenKind::EOF => {
-                    self.emit(ParserError::UnclosedDelimiter {
+                    return Err(ParserError::UnclosedDelimiter {
                         src: self.session.get_named_source(),
                         span: self.current().span,
                         delimiter: close,
@@ -276,13 +283,11 @@ impl<'a> Parser<'a> {
                 }
             }
         }
-        (elements, trailing_comma)
-    }
-
-    fn recover_to_separator_or_closing(&mut self, close: &TokenKind, separator: &TokenKind) {
-        while !self.at_eof() && !self.current_is(close) && !self.current_is(separator) {
-            self.advance();
+        if let Some(err) = parse_element_err {
+            self.emit(err);
         }
+
+        Ok((elements, trailing_comma))
     }
 
     fn is_junk_for_delim(&self, token: &TokenKind) -> bool {
@@ -460,7 +465,7 @@ impl<'a> Parser<'a> {
             TokenKind::OpeningDelimiter(Delimiter::Brace),
             TokenKind::ClosingDelimiter(Delimiter::Brace),
             |p| p.parse_associated_item(),
-        );
+        )?;
         Ok(items)
     }
 
@@ -547,7 +552,7 @@ impl<'a> Parser<'a> {
             TokenKind::OpeningDelimiter(Delimiter::Brace),
             TokenKind::ClosingDelimiter(Delimiter::Brace),
             |p| p.parse_item(),
-        );
+        )?;
 
         Ok(AstNode::new(
             Item::Mod(ModDecl { ident, items }),
@@ -571,7 +576,7 @@ impl<'a> Parser<'a> {
             TokenKind::ClosingDelimiter(Delimiter::Brace),
             TokenKind::Punctuation(Punct::Comma),
             |p| p.parse_enum_variant(),
-        );
+        )?;
 
         Ok(AstNode::new(
             Item::Enum(EnumDecl {
@@ -605,7 +610,7 @@ impl<'a> Parser<'a> {
                     TokenKind::ClosingDelimiter(Delimiter::Brace),
                     TokenKind::Punctuation(Punct::Comma),
                     |p| p.parse_struct_item_field(),
-                );
+                )?;
                 VariantData::Struct { fields }
             }
             TokenKind::OpeningDelimiter(Delimiter::Paren) => {
@@ -614,7 +619,7 @@ impl<'a> Parser<'a> {
                     TokenKind::ClosingDelimiter(Delimiter::Paren),
                     TokenKind::Punctuation(Punct::Comma),
                     |p| p.parse_type(),
-                );
+                )?;
                 VariantData::Tuple { types }
             }
             TokenKind::Punctuation(Punct::Semicolon) => VariantData::Unit,
@@ -724,7 +729,7 @@ impl<'a> Parser<'a> {
             TokenKind::ClosingDelimiter(Delimiter::Paren),
             TokenKind::Punctuation(Punct::Comma),
             |p| p.parse_param(),
-        ))
+        )?)
     }
 
     /// starts at the identifier and ends after the type
@@ -792,7 +797,8 @@ impl<'a> Parser<'a> {
                     TokenKind::ClosingDelimiter(Delimiter::Paren),
                     TokenKind::Punctuation(Punct::Comma),
                     |p| p.parse_pattern(),
-                );
+                )?;
+
                 if elements.len() == 1 && !trailing_comma {
                     Pattern::Paren(Box::new(elements[0].clone()))
                 } else {
@@ -803,7 +809,13 @@ impl<'a> Parser<'a> {
                 let expr = self.parse_expression()?;
                 Pattern::Expr(Box::new(expr))
             }
-            _ => panic!("Expected Pattern"),
+            found => {
+                return Err(ParserError::ExpectedPattern {
+                    src: self.session.get_named_source(),
+                    span: self.current().span,
+                    found: found.clone(),
+                });
+            }
         };
 
         Ok(AstNode::new(pattern, lo.to(self.previous().span)))
@@ -830,7 +842,7 @@ impl<'a> Parser<'a> {
                 TokenKind::ClosingDelimiter(Delimiter::Brace),
                 TokenKind::Punctuation(Punct::Comma),
                 |p| p.parse_pattern_struct_field(),
-            );
+            )?;
             Pattern::Struct(path, fields)
         } else if self.check(&[TokenKind::OpeningDelimiter(Delimiter::Paren)]) {
             // TupleStruct pattern: Path(pattern, ...)
@@ -839,7 +851,7 @@ impl<'a> Parser<'a> {
                 TokenKind::ClosingDelimiter(Delimiter::Paren),
                 TokenKind::Punctuation(Punct::Comma),
                 |p| p.parse_pattern(),
-            );
+            )?;
             Pattern::TupleStruct(path, patterns)
         } else {
             Pattern::Path(path)
@@ -870,7 +882,7 @@ impl<'a> Parser<'a> {
             TokenKind::Punctuation(Punct::Greater),
             TokenKind::Punctuation(Punct::Comma),
             |p| p.parse_generic_param(),
-        ))
+        )?)
     }
 
     fn parse_generic_param(&mut self) -> PResult<AstNode<GenericParam>> {
@@ -940,7 +952,7 @@ impl<'a> Parser<'a> {
             TokenKind::Punctuation(Punct::Greater),
             TokenKind::Punctuation(Punct::Comma),
             |p| p.parse_generic_arg(),
-        ))
+        )?)
     }
 
     fn parse_generic_arg(&mut self) -> PResult<AstNode<GenericArg>> {
@@ -967,7 +979,7 @@ impl<'a> Parser<'a> {
                     TokenKind::ClosingDelimiter(Delimiter::Paren),
                     TokenKind::Punctuation(Punct::Comma),
                     |p| p.parse_type(),
-                );
+                )?;
 
                 let return_ty = self.parse_return_type()?;
 
@@ -998,7 +1010,7 @@ impl<'a> Parser<'a> {
                     TokenKind::ClosingDelimiter(Delimiter::Paren),
                     TokenKind::Punctuation(Punct::Comma),
                     |p| p.parse_type(),
-                );
+                )?;
 
                 if elements.len() == 1 && !trailing_comma {
                     elements[0].node.clone()
@@ -1150,7 +1162,7 @@ impl<'a> Parser<'a> {
                         TokenKind::ClosingDelimiter(Delimiter::Paren),
                         TokenKind::Punctuation(Punct::Comma),
                         |p| p.parse_expression(),
-                    );
+                    )?;
 
                     lhs = AstNode::new(
                         Expr::Call(CallExpr {
@@ -1172,7 +1184,7 @@ impl<'a> Parser<'a> {
                             TokenKind::ClosingDelimiter(Delimiter::Paren),
                             TokenKind::Punctuation(Punct::Comma),
                             |p| p.parse_expression(),
-                        );
+                        )?;
 
                         let name = AstNode::new(
                             PathSegment {
@@ -1459,7 +1471,7 @@ impl<'a> Parser<'a> {
                     TokenKind::ClosingDelimiter(Delimiter::Bracket),
                     TokenKind::Punctuation(Punct::Comma),
                     |p| p.parse_expression(),
-                );
+                )?;
                 Expr::Array(ArrayExpr { expressions: elems })
             }
             TokenKind::OpeningDelimiter(Delimiter::Paren) => {
@@ -1468,7 +1480,7 @@ impl<'a> Parser<'a> {
                     TokenKind::ClosingDelimiter(Delimiter::Paren),
                     TokenKind::Punctuation(Punct::Comma),
                     |p| p.parse_expression(),
-                );
+                )?;
                 if elems.len() == 1 && !trailing_comma {
                     Expr::Paren(Box::new(elems[0].clone()))
                 } else {
@@ -1635,7 +1647,7 @@ impl<'a> Parser<'a> {
             TokenKind::ClosingDelimiter(Delimiter::Brace),
             TokenKind::Punctuation(Punct::Comma),
             |p| p.parse_match_arm(),
-        );
+        )?;
         Ok(AstNode::new(
             MatchExpr {
                 value: Box::new(expr),
@@ -1700,7 +1712,7 @@ impl<'a> Parser<'a> {
             TokenKind::ClosingDelimiter(Delimiter::Brace),
             TokenKind::Punctuation(Punct::Comma),
             |p| p.parse_struct_expr_field(),
-        );
+        )?;
 
         Ok(AstNode::new(
             StructExpr { name: path, fields },
