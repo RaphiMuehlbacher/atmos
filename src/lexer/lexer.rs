@@ -148,7 +148,7 @@ impl<'sess> Lexer<'sess> {
                     }
                 }
                 '"' => self.lex_string(),
-                c if c.is_ascii_digit() => self.lex_number(),
+                c if c.is_numeric() => self.lex_number(),
                 c if c.is_whitespace() => {
                     self.skip_whitespace();
                     continue;
@@ -218,18 +218,22 @@ impl<'sess> Lexer<'sess> {
         let mut value = String::new();
         let mut has_dot = false;
 
-        value.push(self.session.get_source()[self.position - 1..].chars().next().unwrap());
+        let src = self.session.get_source();
+        let char_indices = src[..self.position].chars();
+        if let Some(first_char) = char_indices.last() {
+            value.push(first_char);
+        }
 
         while let Some(c) = self.peek() {
             match c {
                 '_' => {
                     self.advance();
                 }
-                '0'..='9' => {
+                c if c.is_numeric() => {
                     value.push(c);
                     self.advance();
                 }
-                '.' if !has_dot && self.peek_next().is_some_and(|c| c.is_ascii_digit()) => {
+                '.' if !has_dot && self.peek_next().is_some_and(|c| c.is_numeric()) => {
                     has_dot = true;
                     value.push(c);
                     self.advance();
@@ -254,7 +258,12 @@ impl<'sess> Lexer<'sess> {
 
     fn collect_identifier_string(&mut self) -> String {
         let mut value = String::new();
-        value.push(self.session.get_source()[self.position - 1..].chars().next().unwrap());
+
+        let src = self.session.get_source();
+        let char_indices = src[..self.position].chars();
+        if let Some(first_char) = char_indices.last() {
+            value.push(first_char);
+        }
 
         while let Some(c) = self.peek() {
             if self.is_ident_continue(c) {
@@ -325,11 +334,11 @@ impl<'sess> Lexer<'sess> {
     }
 
     fn is_ident_start(&self, c: char) -> bool {
-        c.is_ascii_alphabetic() || c == '_'
+        c.is_alphabetic() || c == '_'
     }
 
     fn is_ident_continue(&self, c: char) -> bool {
-        c.is_ascii_alphanumeric() || c == '_'
+        c.is_alphanumeric() || c == '_'
     }
 
     fn is_standalone_underscore(&self) -> bool {
