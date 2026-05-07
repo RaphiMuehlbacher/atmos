@@ -1,4 +1,5 @@
-const n {
+fn test<A, B>(a: A, b: B) -> A {
+}
 /*
 enum Option<T> {
     Some(T),

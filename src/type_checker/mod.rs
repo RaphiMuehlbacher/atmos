@@ -1,4 +1,4 @@
 pub mod ty;
-pub mod type_checker;
+pub mod type_collector;
 
-pub use type_checker::TypeChecker;
+pub use type_collector::TypeCollector;

@@ -15,16 +15,21 @@ impl TyVarId {
 }
 
 type GenericArgs = Vec<GenericArg>;
+
+#[derive(Clone, Debug)]
 pub enum GenericArg {
     Type(Ty),
     Const(Const),
 }
 
+#[derive(Clone, Debug)]
 pub enum Const {
     Expr(Expr),
 }
 
+#[derive(Clone, Debug)]
 pub enum Ty {
+    Unit,
     Bool,
     I32,
     U32,
@@ -34,9 +39,12 @@ pub enum Ty {
     Slice(Box<Ty>),
     Tuple(Vec<Ty>),
     Ptr(Box<Ty>),
+    FnPtr(Vec<Ty>, Box<Ty>),
     Fn(DefId, GenericArgs),
     Struct(DefId, GenericArgs),
     Enum(DefId, GenericArgs),
+    Never,
     GenericParam(DefId),
     TyVar(TyVarId),
+    Err,
 }

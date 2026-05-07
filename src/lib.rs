@@ -28,5 +28,6 @@ pub fn compile_source(session: &Session) {
     let mut ast_lowerer = AstLowerer::new(defs, &ast);
     let hir = ast_lowerer.lower();
 
-    let mut type_checker = TypeChecker::new(session, &hir);
+    let mut type_collector = TypeCollector::new(session, &hir);
+    type_collector.collect_items();
 }
