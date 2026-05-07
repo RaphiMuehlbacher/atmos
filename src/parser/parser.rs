@@ -1412,10 +1412,6 @@ impl<'a> Parser<'a> {
                 self.advance();
                 Expr::Literal(LiteralExpr::Bool(false))
             }
-            TokenKind::Keyword(Kw::Unit) => {
-                self.advance();
-                Expr::Literal(LiteralExpr::Unit)
-            }
             TokenKind::Literal(lit) => {
                 let token_span = self.current().span;
                 let expr = match lit {

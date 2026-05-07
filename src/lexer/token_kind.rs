@@ -89,7 +89,6 @@ pub enum Kw {
     Where,    // 'where'
     Extern,   // 'extern'
     Const,    // 'const'
-    Unit,     // 'unit'
 }
 
 impl TokenKind {
@@ -244,7 +243,6 @@ impl Display for Kw {
             Kw::Where => "where",
             Kw::Extern => "extern",
             Kw::Const => "const",
-            Kw::Unit => "()",
         };
         write!(f, "{}", s)
     }

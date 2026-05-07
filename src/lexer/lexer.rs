@@ -308,7 +308,6 @@ impl<'sess> Lexer<'sess> {
             "where" => TokenKind::Keyword(Kw::Where),
             "extern" => TokenKind::Keyword(Kw::Extern),
             "const" => TokenKind::Keyword(Kw::Const),
-            "unit" => TokenKind::Keyword(Kw::Unit),
             _ => TokenKind::Ident(value),
         }
     }

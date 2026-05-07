@@ -13,7 +13,7 @@ pub use parser::Parser;
 pub use resolver::Resolver;
 pub use session::Session;
 
-pub use type_checker::TypeChecker;
+pub use type_checker::TypeCollector;
 
 pub fn compile_source(session: &Session) {
     let mut lexer = Lexer::new(session);
