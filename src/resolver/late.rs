@@ -106,7 +106,7 @@ impl<'a, 'r> LateResolver<'a, 'r> {
                         if let Some(res) = self.lookup_value(&name.node) {
                             match res {
                                 Res::Local(_) | Res::PrimTy(_) | Res::SelfTy(_) | Res::Err => {}
-                                Res::Def(def_id) => {
+                                Res::Def(def_id, _) => {
                                     self.r.defs.insert_ast_id(path.ast_id, def_id);
                                     return;
                                 }
@@ -169,7 +169,10 @@ impl<'a, 'r> LateResolver<'a, 'r> {
         match module.get(ident) {
             None => self.lookup_modules(ident, module.parent()?),
             Some(binding) => match binding {
-                Binding::Item(def_id) => Some(Res::Def(*def_id)),
+                Binding::Item(def_id) => {
+                    let def_kind = self.r.defs.get_definition(*def_id).unwrap().kind;
+                    Some(Res::Def(*def_id, def_kind))
+                }
                 _ => unreachable!(),
             },
         }
@@ -194,7 +197,7 @@ impl<'a, 'r> LateResolver<'a, 'r> {
             Ty::Path(path) => {
                 if path.node.segments.len() == 1 {
                     let ident = &path.node.segments[0].node.ident.node;
-                    if let Some(Res::Def(def_id)) = self.lookup_modules(ident, self.parent) {
+                    if let Some(Res::Def(def_id, _)) = self.lookup_modules(ident, self.parent) {
                         return Some(def_id);
                     }
                 }
@@ -250,13 +253,14 @@ impl<'a, 'r> LateResolver<'a, 'r> {
                     current_module = module_id;
                 }
                 Some(Binding::Item(def_id)) => {
+                    let def_kind = self.r.defs.get_definition(def_id).unwrap().kind;
                     if !is_last
                         && matches!(
-                            self.r.defs.get_definition(def_id).unwrap().kind,
+                            def_kind,
                             DefKind::TypeParam | DefKind::Struct | DefKind::Enum | DefKind::TypeAlias | DefKind::Trait
                         )
                     {
-                        let partial_res = PartialRes::new(Res::Def(def_id), segments.len() - 1 - i);
+                        let partial_res = PartialRes::new(Res::Def(def_id, def_kind), segments.len() - 1 - i);
                         self.r.defs.partial_res.insert(path.ast_id, partial_res);
                         self.r.defs.insert_ast_id(path.ast_id, def_id);
                         return;
@@ -265,7 +269,7 @@ impl<'a, 'r> LateResolver<'a, 'r> {
                         self.report_unresolved_path(path);
                         return;
                     }
-                    self.r.defs.insert_resolution(path.ast_id, Res::Def(def_id));
+                    self.r.defs.insert_resolution(path.ast_id, Res::Def(def_id, def_kind));
                     self.r.defs.insert_ast_id(path.ast_id, def_id);
                     return;
                 }

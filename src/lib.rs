@@ -26,8 +26,8 @@ pub fn compile_source(session: &Session) {
     let defs = resolver.resolve();
 
     let mut ast_lowerer = AstLowerer::new(defs, &ast);
-    let hir = ast_lowerer.lower();
+    let (hir, hir_nodes) = ast_lowerer.lower();
 
-    let mut type_collector = TypeCollector::new(session, &hir);
+    let mut type_collector = TypeCollector::new(session, &hir, &hir_nodes);
     type_collector.collect_items();
 }

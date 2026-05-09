@@ -1,5 +1,6 @@
 use crate::parser::ast::Ident;
 use crate::parser::AstId;
+use crate::resolver::defs::DefKind;
 use crate::resolver::DefId;
 use std::collections::HashMap;
 
@@ -38,7 +39,7 @@ pub struct SelfTyInfo {
 #[derive(Clone, PartialEq, Debug)]
 pub enum Res {
     Local(AstId),
-    Def(DefId),
+    Def(DefId, DefKind),
     PrimTy(PrimTy),
     SelfTy(SelfTyInfo),
     Err,

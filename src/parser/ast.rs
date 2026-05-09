@@ -181,7 +181,7 @@ pub struct Param {
 pub struct ConstDecl {
     pub ident: AstNode<Ident>,
     pub generics: Vec<AstNode<GenericParam>>,
-    pub type_annotation: Option<AstNode<Ty>>,
+    pub type_annotation: AstNode<Ty>,
     pub expr: AstNode<Expr>,
 }
 

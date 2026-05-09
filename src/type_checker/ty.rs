@@ -14,7 +14,7 @@ impl TyVarId {
     }
 }
 
-type GenericArgs = Vec<GenericArg>;
+pub type GenericArgs = Vec<GenericArg>;
 
 #[derive(Clone, Debug)]
 pub enum GenericArg {

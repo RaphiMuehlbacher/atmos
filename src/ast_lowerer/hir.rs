@@ -171,7 +171,7 @@ pub struct ConstDecl {
     pub def_id: DefId,
     pub ident: HirNode<Ident>,
     pub generics: Vec<HirNode<GenericParam>>,
-    pub ty: Option<HirNode<Ty>>,
+    pub ty: HirNode<Ty>,
     pub expr: HirNode<Expr>,
 }
 
@@ -415,4 +415,29 @@ pub struct MatchArm {
 pub struct LetExpr {
     pub pattern: HirNode<Pattern>,
     pub init: Box<HirNode<Expr>>,
+}
+
+#[derive(Debug, Clone)]
+pub enum Node {
+    Item(HirNode<Item>),
+    Param(HirNode<Param>),
+    FnSig(HirNode<FnSig>),
+    GenericParam(HirNode<GenericParam>),
+    AssociatedItem(HirNode<AssociatedItem>),
+    Variant(HirNode<EnumVariant>),
+    VariantData(HirNode<VariantData>),
+    Field(HirNode<StructField>),
+    Ty(HirNode<Ty>),
+    Path(HirNode<Path>),
+    PathSegment(HirNode<PathSegment>),
+    Ident(HirNode<Ident>),
+    Pattern(HirNode<Pattern>),
+    PatField(HirNode<PatternStructField>),
+    Expr(HirNode<Expr>),
+    ExprField(HirNode<StructExprField>),
+    Stmt(HirNode<Stmt>),
+    LetStmt(HirNode<LetStmt>),
+    Arm(HirNode<MatchArm>),
+    Block(HirNode<BlockExpr>),
+    Err,
 }

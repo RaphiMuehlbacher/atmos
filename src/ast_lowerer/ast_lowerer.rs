@@ -3,18 +3,28 @@ use crate::ast_lowerer::hir::HirNode;
 use crate::parser::ast;
 use crate::parser::ast::AstNode;
 use crate::resolver::defs::DefinitionMap;
+use std::collections::HashMap;
 
 pub struct AstLowerer<'ast> {
     ast: &'ast ast::Crate,
     defs: &'ast DefinitionMap,
+    hir_nodes: HashMap<hir::HirId, hir::Node>,
 }
 
 impl<'ast> AstLowerer<'ast> {
     pub fn new(defs: &'ast DefinitionMap, ast: &'ast ast::Crate) -> Self {
-        Self { ast, defs }
+        Self {
+            ast,
+            defs,
+            hir_nodes: HashMap::new(),
+        }
     }
 
-    pub fn lower(&mut self) -> hir::Crate {
+    fn insert_node(&mut self, hir_id: hir::HirId, node: hir::Node) {
+        self.hir_nodes.insert(hir_id, node);
+    }
+
+    pub fn lower(&mut self) -> (hir::Crate, HashMap<hir::HirId, hir::Node>) {
         let items = self
             .ast
             .items
@@ -23,10 +33,12 @@ impl<'ast> AstLowerer<'ast> {
             .map(|item| self.lower_item(item))
             .collect();
 
-        hir::Crate {
+        let krate = hir::Crate {
             items,
             span: self.ast.span,
-        }
+        };
+
+        (krate, self.hir_nodes.clone())
     }
 
     fn lower_item(&mut self, item: &AstNode<ast::Item>) -> HirNode<hir::Item> {
@@ -116,7 +128,7 @@ impl<'ast> AstLowerer<'ast> {
                     .iter()
                     .map(|g| self.lower_generic_param(g))
                     .collect();
-                let ty = const_item.type_annotation.as_ref().map(|t| self.lower_type(t));
+                let ty = self.lower_type(&const_item.type_annotation);
                 let expr = self.lower_expr(&const_item.expr);
                 hir::Item::Const(hir::ConstDecl {
                     def_id,
@@ -145,7 +157,9 @@ impl<'ast> AstLowerer<'ast> {
             }
         };
 
-        HirNode::new(hir_item, item.span)
+        let hir_node = HirNode::new(hir_item, item.span);
+        self.insert_node(hir_node.hir_id, hir::Node::Item(hir_node.clone()));
+        hir_node
     }
 
     fn lower_fn_sig(&mut self, sig: &AstNode<ast::FnSig>) -> HirNode<hir::FnSig> {
@@ -160,7 +174,7 @@ impl<'ast> AstLowerer<'ast> {
         let params = sig.node.params.iter().map(|param| self.lower_param(param)).collect();
         let return_ty = sig.node.return_ty.as_ref().map(|return_ty| self.lower_type(return_ty));
 
-        HirNode::new(
+        let hir_node = HirNode::new(
             hir::FnSig {
                 ident,
                 generics,
@@ -168,19 +182,23 @@ impl<'ast> AstLowerer<'ast> {
                 return_ty,
             },
             sig.span,
-        )
+        );
+        self.insert_node(hir_node.hir_id, hir::Node::FnSig(hir_node.clone()));
+        hir_node
     }
 
     fn lower_param(&mut self, param: &AstNode<ast::Param>) -> HirNode<hir::Param> {
         let pattern = self.lower_pattern(&param.node.pattern);
         let type_annotation = self.lower_type(&param.node.type_annotation);
-        HirNode::new(
+        let hir_node = HirNode::new(
             hir::Param {
                 pattern,
                 type_annotation,
             },
             param.span,
-        )
+        );
+        self.insert_node(hir_node.hir_id, hir::Node::Param(hir_node.clone()));
+        hir_node
     }
 
     fn lower_generic_param(&mut self, generic_param: &AstNode<ast::GenericParam>) -> HirNode<hir::GenericParam> {
@@ -197,7 +215,7 @@ impl<'ast> AstLowerer<'ast> {
             ast::GenericParamKind::Type => hir::GenericParamKind::Type,
         };
 
-        HirNode::new(
+        let hir_node = HirNode::new(
             hir::GenericParam {
                 def_id,
                 ident,
@@ -205,7 +223,9 @@ impl<'ast> AstLowerer<'ast> {
                 kind,
             },
             generic_param.span,
-        )
+        );
+        self.insert_node(hir_node.hir_id, hir::Node::GenericParam(hir_node.clone()));
+        hir_node
     }
 
     fn lower_path(&mut self, path: &AstNode<ast::Path>) -> HirNode<hir::Path> {
@@ -228,7 +248,9 @@ impl<'ast> AstLowerer<'ast> {
                 hir::Path::Resolved { res, segments }
             }
         };
-        HirNode::new(lowered_path, path.span)
+        let hir_node = HirNode::new(lowered_path, path.span);
+        self.insert_node(hir_node.hir_id, hir::Node::Path(hir_node.clone()));
+        hir_node
     }
 
     fn lower_segments(&mut self, segments: &Vec<AstNode<ast::PathSegment>>) -> Vec<HirNode<hir::PathSegment>> {
@@ -243,7 +265,9 @@ impl<'ast> AstLowerer<'ast> {
             .map(|arg| self.lower_generic_arg(arg))
             .collect();
 
-        HirNode::new(hir::PathSegment { ident, args }, segment.span)
+        let hir_node = HirNode::new(hir::PathSegment { ident, args }, segment.span);
+        self.insert_node(hir_node.hir_id, hir::Node::PathSegment(hir_node.clone()));
+        hir_node
     }
 
     fn lower_generic_arg(&mut self, generic_arg: &AstNode<ast::GenericArg>) -> HirNode<hir::GenericArg> {
@@ -274,7 +298,9 @@ impl<'ast> AstLowerer<'ast> {
             ast::Ty::Paren(ty) => self.lower_type(ty).node,
             ast::Ty::Err => hir::Ty::Err,
         };
-        HirNode::new(hir_ty, ty.span)
+        let hir_node = HirNode::new(hir_ty, ty.span);
+        self.insert_node(hir_node.hir_id, hir::Node::Ty(hir_node.clone()));
+        hir_node
     }
 
     fn lower_stmt(&mut self, stmt: &AstNode<ast::Stmt>) -> HirNode<hir::Stmt> {
@@ -292,7 +318,9 @@ impl<'ast> AstLowerer<'ast> {
             ast::Stmt::Err => unreachable!(),
         };
 
-        HirNode::new(hir_stmt, stmt.span)
+        let hir_node = HirNode::new(hir_stmt, stmt.span);
+        self.insert_node(hir_node.hir_id, hir::Node::Stmt(hir_node.clone()));
+        hir_node
     }
 
     fn lower_expr(&mut self, expr: &AstNode<ast::Expr>) -> HirNode<hir::Expr> {
@@ -372,7 +400,7 @@ impl<'ast> AstLowerer<'ast> {
                 let body = self.lower_block_expr(&loop_expr.body);
                 hir::Expr::Loop(hir::LoopExpr { body })
             }
-            ast::Expr::For(for_expr) => {
+            ast::Expr::For(_for_expr) => {
                 todo!("for loop desugaring")
             }
             ast::Expr::Assign(assign_expr) => {
@@ -462,19 +490,25 @@ impl<'ast> AstLowerer<'ast> {
             ast::Expr::Err => hir::Expr::Err,
         };
 
-        HirNode::new(hir_expr, expr.span)
+        let hir_node = HirNode::new(hir_expr, expr.span);
+        self.insert_node(hir_node.hir_id, hir::Node::Expr(hir_node.clone()));
+        hir_node
     }
 
     fn lower_struct_expr_field(&mut self, field: &AstNode<ast::StructExprField>) -> HirNode<hir::StructExprField> {
         let ident = field.node.ident.clone().into();
         let expr = Box::new(self.lower_expr(&field.node.expr));
-        HirNode::new(hir::StructExprField { ident, expr }, field.span)
+        let hir_node = HirNode::new(hir::StructExprField { ident, expr }, field.span);
+        self.insert_node(hir_node.hir_id, hir::Node::ExprField(hir_node.clone()));
+        hir_node
     }
 
     fn lower_match_arm(&mut self, arm: &AstNode<ast::MatchArm>) -> HirNode<hir::MatchArm> {
         let pattern = self.lower_pattern(&arm.node.pattern);
         let body = Box::new(self.lower_expr(&arm.node.body));
-        HirNode::new(hir::MatchArm { pattern, body }, arm.span)
+        let hir_node = HirNode::new(hir::MatchArm { pattern, body }, arm.span);
+        self.insert_node(hir_node.hir_id, hir::Node::Arm(hir_node.clone()));
+        hir_node
     }
 
     fn lower_literal(&self, lit: &ast::LiteralExpr) -> hir::Literal {
@@ -532,7 +566,9 @@ impl<'ast> AstLowerer<'ast> {
             .filter(|stmt| !matches!(&stmt.node, ast::Stmt::Item(item) if matches!(item.node, ast::Item::Use(_))))
             .map(|stmt| self.lower_stmt(stmt))
             .collect();
-        HirNode::new(hir::BlockExpr { stmts }, block.span)
+        let hir_node = HirNode::new(hir::BlockExpr { stmts }, block.span);
+        self.insert_node(hir_node.hir_id, hir::Node::Block(hir_node.clone()));
+        hir_node
     }
 
     fn lower_pattern(&mut self, pattern: &AstNode<ast::Pattern>) -> HirNode<hir::Pattern> {
@@ -564,7 +600,9 @@ impl<'ast> AstLowerer<'ast> {
             ast::Pattern::Err => hir::Pattern::Err,
         };
 
-        HirNode::new(pat, pattern.span)
+        let hir_node = HirNode::new(pat, pattern.span);
+        self.insert_node(hir_node.hir_id, hir::Node::Pattern(hir_node.clone()));
+        hir_node
     }
     fn lower_pattern_struct_field(
         &mut self,
@@ -573,7 +611,9 @@ impl<'ast> AstLowerer<'ast> {
         let ident = struct_field.node.ident.clone().into();
         let pattern = self.lower_pattern(&struct_field.node.pattern);
 
-        HirNode::new(hir::PatternStructField { ident, pattern }, struct_field.span)
+        let hir_node = HirNode::new(hir::PatternStructField { ident, pattern }, struct_field.span);
+        self.insert_node(hir_node.hir_id, hir::Node::PatField(hir_node.clone()));
+        hir_node
     }
 
     fn lower_variant_data(&mut self, data: &AstNode<ast::VariantData>) -> HirNode<hir::VariantData> {
@@ -588,21 +628,27 @@ impl<'ast> AstLowerer<'ast> {
                 hir::VariantData::Tuple { types }
             }
         };
-        HirNode::new(hir_data, data.span)
+        let hir_node = HirNode::new(hir_data, data.span);
+        self.insert_node(hir_node.hir_id, hir::Node::VariantData(hir_node.clone()));
+        hir_node
     }
 
     fn lower_struct_field(&mut self, field: &AstNode<ast::StructFieldDef>) -> HirNode<hir::StructField> {
         let def_id = *self.defs.ast_to_def.get(&field.ast_id).unwrap();
         let ident = field.node.ident.clone().into();
         let ty = self.lower_type(&field.node.type_annotation);
-        HirNode::new(hir::StructField { def_id, ident, ty }, field.span)
+        let hir_node = HirNode::new(hir::StructField { def_id, ident, ty }, field.span);
+        self.insert_node(hir_node.hir_id, hir::Node::Field(hir_node.clone()));
+        hir_node
     }
 
     fn lower_enum_variant(&mut self, variant: &AstNode<ast::EnumVariant>) -> HirNode<hir::EnumVariant> {
         let def_id = *self.defs.ast_to_def.get(&variant.ast_id).unwrap();
         let ident = variant.node.ident.clone().into();
         let data = self.lower_variant_data(&variant.node.data);
-        HirNode::new(hir::EnumVariant { def_id, ident, data }, variant.span)
+        let hir_node = HirNode::new(hir::EnumVariant { def_id, ident, data }, variant.span);
+        self.insert_node(hir_node.hir_id, hir::Node::Variant(hir_node.clone()));
+        hir_node
     }
 
     fn lower_associated_item(&mut self, item: &AstNode<ast::AssociatedItem>) -> HirNode<hir::AssociatedItem> {
@@ -633,6 +679,8 @@ impl<'ast> AstLowerer<'ast> {
                 ))
             }
         };
-        HirNode::new(hir_item, item.span)
+        let hir_node = HirNode::new(hir_item, item.span);
+        self.insert_node(hir_node.hir_id, hir::Node::AssociatedItem(hir_node.clone()));
+        hir_node
     }
 }

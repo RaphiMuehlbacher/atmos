@@ -165,7 +165,7 @@ pub fn walk_item(visitor: &mut impl Visitor, item: &AstNode<Item>) {
         }) => {
             visitor.visit_ident(ident);
             visit_list!(visitor, visit_generic_param, generics);
-            visit_opt!(visitor, visit_type, type_annotation);
+            visitor.visit_type(type_annotation);
             visitor.visit_expr(expr);
         }
         Item::Use(use_item) => {

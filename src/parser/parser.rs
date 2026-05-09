@@ -447,11 +447,8 @@ impl<'a> Parser<'a> {
         let ident = self.parse_ident()?;
         let generics = self.parse_generic_params()?;
 
-        let type_annotation = if self.consume(&[TokenKind::Punctuation(Punct::Colon)]) {
-            Some(self.parse_type()?)
-        } else {
-            None
-        };
+        self.expect(&TokenKind::Punctuation(Punct::Colon))?;
+        let type_annotation = self.parse_type()?;
 
         self.expect(&TokenKind::Punctuation(Punct::Eq))?;
 
