@@ -109,7 +109,7 @@ pub struct PatternStructField {
 #[derive(Debug, Clone)]
 pub enum AssociatedItem {
     Fn(HirNode<FnSig>, Option<HirNode<BlockExpr>>),
-    Type(HirNode<TyAlias>),
+    Type(HirNode<AssocTyAlias>),
 }
 
 #[derive(Debug, Clone)]
@@ -201,12 +201,12 @@ pub struct EnumVariant {
 #[derive(Debug, Clone)]
 pub enum VariantData {
     Unit,
-    Struct { fields: Vec<HirNode<StructField>> },
-    Tuple { types: Vec<HirNode<Ty>> },
+    Struct { fields: Vec<HirNode<FieldDef>> },
+    Tuple { fields: Vec<HirNode<FieldDef>> },
 }
 
 #[derive(Debug, Clone)]
-pub struct StructField {
+pub struct FieldDef {
     pub def_id: DefId,
     pub ident: HirNode<Ident>,
     pub ty: HirNode<Ty>,
@@ -238,6 +238,14 @@ pub struct ImplDecl {
 
 #[derive(Debug, Clone)]
 pub struct TyAlias {
+    pub def_id: DefId,
+    pub ident: HirNode<Ident>,
+    pub generics: Vec<HirNode<GenericParam>>,
+    pub ty: HirNode<Ty>,
+}
+
+#[derive(Debug, Clone)]
+pub struct AssocTyAlias {
     pub def_id: DefId,
     pub ident: HirNode<Ident>,
     pub generics: Vec<HirNode<GenericParam>>,
@@ -426,7 +434,7 @@ pub enum Node {
     AssociatedItem(HirNode<AssociatedItem>),
     Variant(HirNode<EnumVariant>),
     VariantData(HirNode<VariantData>),
-    Field(HirNode<StructField>),
+    Field(HirNode<FieldDef>),
     Ty(HirNode<Ty>),
     Path(HirNode<Path>),
     PathSegment(HirNode<PathSegment>),

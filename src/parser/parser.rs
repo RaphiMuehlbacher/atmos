@@ -3,12 +3,12 @@ use crate::extension::SourceSpanExt;
 use crate::lexer::token_kind::{Delimiter, Kw, Literal, Punct};
 use crate::lexer::{Token, TokenKind};
 use crate::parser::ast::{
-    AddrOfExpr, ArrayExpr, AssignExpr, AssignOp, AssignOpExpr, AssociatedItem, AstNode, BinOp, BinaryExpr, BlockExpr,
-    BreakExpr, CallExpr, CastExpr, ConstDecl, Crate, EnumDecl, EnumVariant, Expr, ExternFnDecl, FieldAccessExpr,
-    FnDecl, FnSig, ForExpr, GenericArg, GenericParam, GenericParamKind, Ident, IfExpr, ImplDecl, IndexExpr, Item,
-    LetExpr, LetStmt, LiteralExpr, LoopExpr, MatchArm, MatchExpr, MethodCallExpr, ModDecl, Param, Path, PathExpr,
-    PathSegment, Pattern, PatternStructField, ReturnExpr, Stmt, StructDecl, StructExpr, StructExprField,
-    StructFieldDef, TraitDecl, TupleExpr, Ty, TyAliasDecl, UnOp, UnaryExpr, UseItem, VariantData, WhileExpr,
+    AddrOfExpr, ArrayExpr, AssignExpr, AssignOp, AssignOpExpr, AssocTyAlias, AssociatedItem, AstNode, BinOp,
+    BinaryExpr, BlockExpr, BreakExpr, CallExpr, CastExpr, ConstDecl, Crate, EnumDecl, EnumVariant, Expr, ExternFnDecl,
+    FieldAccessExpr, FieldDef, FnDecl, FnSig, ForExpr, GenericArg, GenericParam, GenericParamKind, Ident, IfExpr,
+    ImplDecl, IndexExpr, Item, LetExpr, LetStmt, LiteralExpr, LoopExpr, MatchArm, MatchExpr, MethodCallExpr, ModDecl,
+    Param, Path, PathExpr, PathSegment, Pattern, PatternStructField, ReturnExpr, Stmt, StructDecl, StructExpr,
+    StructExprField, TraitDecl, TupleExpr, Ty, TyAlias, UnOp, UnaryExpr, UseItem, VariantData, WhileExpr,
 };
 use crate::parser::ParserError;
 use crate::Session;
@@ -95,12 +95,6 @@ impl<'a> Parser<'a> {
             Ok(())
         } else {
             Err(self.unexpected_token(expected))
-        }
-    }
-
-    fn expect_emit(&mut self, expected: &TokenKind) {
-        if !self.current_is(expected) {
-            self.emit(self.unexpected_token(expected));
         }
     }
 
@@ -403,30 +397,6 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_type_alias(&mut self) -> PResult<AstNode<TyAliasDecl>> {
-        let lo = self.current().span;
-        self.advance();
-
-        let ident = self.parse_ident()?;
-        let generics = self.parse_generic_params()?;
-
-        self.expect_consume(&TokenKind::Punctuation(Punct::Eq))?;
-
-        let ty = if self.check(&[TokenKind::Punctuation(Punct::Semicolon)]) {
-            self.advance();
-            None
-        } else {
-            let ty = self.parse_type()?;
-            self.consume(&[TokenKind::Punctuation(Punct::Semicolon)]);
-            Some(ty)
-        };
-
-        Ok(AstNode::new(
-            TyAliasDecl { ident, generics, ty },
-            lo.to(self.previous().span),
-        ))
-    }
-
     fn parse_extern_fn_item(&mut self) -> PResult<AstNode<Item>> {
         let lo = self.current().span;
         self.advance();
@@ -478,10 +448,20 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_type_alias_item(&mut self) -> PResult<AstNode<Item>> {
-        let ty_alias = self.parse_type_alias()?;
+        let lo = self.current().span;
+        self.advance();
+
+        let ident = self.parse_ident()?;
+        let generics = self.parse_generic_params()?;
+
+        self.expect_consume(&TokenKind::Punctuation(Punct::Eq))?;
+
+        let ty = self.parse_type()?;
+        self.consume(&[TokenKind::Punctuation(Punct::Semicolon)]);
+
         Ok(AstNode::new(
-            Item::TyAlias(ty_alias.node),
-            ty_alias.span.to(self.previous().span),
+            Item::TyAlias(TyAlias { ident, generics, ty }),
+            lo.to(self.previous().span),
         ))
     }
 
@@ -514,7 +494,21 @@ impl<'a> Parser<'a> {
                 AssociatedItem::Fn(fn_decl, body)
             }
             TokenKind::Keyword(Kw::Type) => {
-                let ty_alias = self.parse_type_alias()?;
+                let ident = self.parse_ident()?;
+                let generics = self.parse_generic_params()?;
+
+                self.expect_consume(&TokenKind::Punctuation(Punct::Eq))?;
+
+                let ty = if self.check(&[TokenKind::Punctuation(Punct::Semicolon)]) {
+                    self.advance();
+                    None
+                } else {
+                    let ty = self.parse_type()?;
+                    self.consume(&[TokenKind::Punctuation(Punct::Semicolon)]);
+                    Some(ty)
+                };
+
+                let ty_alias = AstNode::new(AssocTyAlias { ident, generics, ty }, lo.to(self.previous().span));
                 AssociatedItem::Type(ty_alias)
             }
             found => {
@@ -647,7 +641,21 @@ impl<'a> Parser<'a> {
                     TokenKind::Punctuation(Punct::Comma),
                     |p| p.parse_type(),
                 )?;
-                VariantData::Tuple { types }
+
+                let fields = types
+                    .into_iter()
+                    .enumerate()
+                    .map(|(i, ty)| {
+                        AstNode::new(
+                            FieldDef {
+                                ident: AstNode::new(i.to_string().into(), ty.span),
+                                type_annotation: ty,
+                            },
+                            lo.to(self.previous().span),
+                        )
+                    })
+                    .collect();
+                VariantData::Tuple { fields }
             }
             TokenKind::Punctuation(Punct::Semicolon) => VariantData::Unit,
             _ => VariantData::Unit,
@@ -676,7 +684,7 @@ impl<'a> Parser<'a> {
         ))
     }
 
-    fn parse_struct_item_field(&mut self) -> PResult<AstNode<StructFieldDef>> {
+    fn parse_struct_item_field(&mut self) -> PResult<AstNode<FieldDef>> {
         let lo = self.current().span;
 
         let ident = self.parse_ident()?;
@@ -684,7 +692,7 @@ impl<'a> Parser<'a> {
         let ty = self.parse_type()?;
 
         Ok(AstNode::new(
-            StructFieldDef {
+            FieldDef {
                 ident,
                 type_annotation: ty,
             },
@@ -1053,7 +1061,7 @@ impl<'a> Parser<'a> {
         match &token.kind {
             TokenKind::Ident(ident) => {
                 self.advance();
-                Ok(AstNode::new(Ident::new(ident.into()), lo.to(self.previous().span)))
+                Ok(AstNode::new(ident.clone().into(), lo.to(self.previous().span)))
             }
             TokenKind::Literal(lit) if matches!(lit, Literal::Integer { .. } | Literal::Float { .. }) => {
                 self.advance();

@@ -43,21 +43,9 @@ pub struct Ident {
     pub name: String,
 }
 
-impl Ident {
-    pub fn new(name: String) -> Self {
-        Self { name }
-    }
-
-    pub fn err() -> Self {
-        Self {
-            name: "err".to_string(),
-        }
-    }
-}
-
-impl PartialEq<&str> for Ident {
-    fn eq(&self, other: &&str) -> bool {
-        self.name == *other
+impl From<String> for Ident {
+    fn from(value: String) -> Self {
+        Self { name: value }
     }
 }
 
@@ -115,7 +103,7 @@ pub struct PatternStructField {
 #[derive(Debug, Clone)]
 pub enum AssociatedItem {
     Fn(AstNode<FnSig>, Option<AstNode<BlockExpr>>),
-    Type(AstNode<TyAliasDecl>),
+    Type(AstNode<AssocTyAlias>),
 }
 
 #[derive(Debug, Clone)]
@@ -144,7 +132,7 @@ pub enum Item {
     ExternFn(ExternFnDecl),
     Const(ConstDecl),
     Use(UseItem),
-    TyAlias(TyAliasDecl),
+    TyAlias(TyAlias),
 }
 
 #[derive(Debug, Clone)]
@@ -214,12 +202,12 @@ pub struct EnumVariant {
 #[derive(Debug, Clone)]
 pub enum VariantData {
     Unit,
-    Struct { fields: Vec<AstNode<StructFieldDef>> },
-    Tuple { types: Vec<AstNode<Ty>> },
+    Struct { fields: Vec<AstNode<FieldDef>> },
+    Tuple { fields: Vec<AstNode<FieldDef>> },
 }
 
 #[derive(Debug, Clone)]
-pub struct StructFieldDef {
+pub struct FieldDef {
     pub ident: AstNode<Ident>,
     pub type_annotation: AstNode<Ty>,
 }
@@ -253,7 +241,14 @@ pub struct ImplDecl {
 }
 
 #[derive(Debug, Clone)]
-pub struct TyAliasDecl {
+pub struct TyAlias {
+    pub ident: AstNode<Ident>,
+    pub generics: Vec<AstNode<GenericParam>>,
+    pub ty: AstNode<Ty>,
+}
+
+#[derive(Debug, Clone)]
+pub struct AssocTyAlias {
     pub ident: AstNode<Ident>,
     pub generics: Vec<AstNode<GenericParam>>,
     pub ty: Option<AstNode<Ty>>,
@@ -482,7 +477,7 @@ impl Item {
             Item::Mod(ModDecl { ident, .. }) => Some(ident),
             Item::ExternFn(ExternFnDecl { sig, .. }) => Some(&sig.node.ident),
             Item::Const(ConstDecl { ident, .. }) => Some(ident),
-            Item::TyAlias(TyAliasDecl { ident, .. }) => Some(ident),
+            Item::TyAlias(TyAlias { ident, .. }) => Some(ident),
             Item::Impl(_) | Item::Use(_) => None,
         }
     }

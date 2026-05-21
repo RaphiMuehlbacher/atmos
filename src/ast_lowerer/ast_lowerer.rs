@@ -2,13 +2,14 @@ use crate::ast_lowerer::hir;
 use crate::ast_lowerer::hir::HirNode;
 use crate::parser::ast;
 use crate::parser::ast::AstNode;
-use crate::resolver::defs::DefinitionMap;
+use crate::resolver::defs::{DefId, DefinitionMap};
 use std::collections::HashMap;
 
 pub struct AstLowerer<'ast> {
     ast: &'ast ast::Crate,
     defs: &'ast DefinitionMap,
     hir_nodes: HashMap<hir::HirId, hir::Node>,
+    def_to_hir: HashMap<DefId, hir::HirId>,
 }
 
 impl<'ast> AstLowerer<'ast> {
@@ -17,6 +18,7 @@ impl<'ast> AstLowerer<'ast> {
             ast,
             defs,
             hir_nodes: HashMap::new(),
+            def_to_hir: HashMap::new(),
         }
     }
 
@@ -24,7 +26,11 @@ impl<'ast> AstLowerer<'ast> {
         self.hir_nodes.insert(hir_id, node);
     }
 
-    pub fn lower(&mut self) -> (hir::Crate, HashMap<hir::HirId, hir::Node>) {
+    fn insert_def(&mut self, def_id: DefId, hir_id: hir::HirId) {
+        self.def_to_hir.insert(def_id, hir_id);
+    }
+
+    pub fn lower(&mut self) -> (hir::Crate, HashMap<hir::HirId, hir::Node>, HashMap<DefId, hir::HirId>) {
         let items = self
             .ast
             .items
@@ -38,18 +44,18 @@ impl<'ast> AstLowerer<'ast> {
             span: self.ast.span,
         };
 
-        (krate, self.hir_nodes.clone())
+        (krate, self.hir_nodes.clone(), self.def_to_hir.clone())
     }
 
     fn lower_item(&mut self, item: &AstNode<ast::Item>) -> HirNode<hir::Item> {
-        let hir_item = match &item.node {
+        let (hir_item, def_id) = match &item.node {
             ast::Item::Fn(fn_item) => {
                 let def_id = *self.defs.ast_to_def.get(&item.ast_id).unwrap();
 
                 let sig = self.lower_fn_sig(&fn_item.sig);
                 let body = self.lower_block_expr(&fn_item.body);
 
-                hir::Item::Fn(hir::FnDecl { def_id, sig, body })
+                (hir::Item::Fn(hir::FnDecl { def_id, sig, body }), def_id)
             }
             ast::Item::Struct(struct_item) => {
                 let def_id = *self.defs.ast_to_def.get(&item.ast_id).unwrap();
@@ -60,24 +66,30 @@ impl<'ast> AstLowerer<'ast> {
                     .map(|g| self.lower_generic_param(g))
                     .collect();
                 let data = self.lower_variant_data(&struct_item.data);
-                hir::Item::Struct(hir::StructDecl {
+                (
+                    hir::Item::Struct(hir::StructDecl {
+                        def_id,
+                        ident,
+                        generics,
+                        data,
+                    }),
                     def_id,
-                    ident,
-                    generics,
-                    data,
-                })
+                )
             }
             ast::Item::Enum(enum_item) => {
                 let def_id = *self.defs.ast_to_def.get(&item.ast_id).unwrap();
                 let ident = enum_item.ident.clone().into();
                 let generics = enum_item.generics.iter().map(|g| self.lower_generic_param(g)).collect();
                 let variants = enum_item.variants.iter().map(|v| self.lower_enum_variant(v)).collect();
-                hir::Item::Enum(hir::EnumDecl {
+                (
+                    hir::Item::Enum(hir::EnumDecl {
+                        def_id,
+                        ident,
+                        generics,
+                        variants,
+                    }),
                     def_id,
-                    ident,
-                    generics,
-                    variants,
-                })
+                )
             }
             ast::Item::Trait(trait_item) => {
                 let def_id = *self.defs.ast_to_def.get(&item.ast_id).unwrap();
@@ -88,18 +100,21 @@ impl<'ast> AstLowerer<'ast> {
                     .map(|g| self.lower_generic_param(g))
                     .collect();
                 let items = trait_item.items.iter().map(|i| self.lower_associated_item(i)).collect();
-                hir::Item::Trait(hir::TraitDecl {
+                (
+                    hir::Item::Trait(hir::TraitDecl {
+                        def_id,
+                        ident,
+                        generics,
+                        items,
+                    }),
                     def_id,
-                    ident,
-                    generics,
-                    items,
-                })
+                )
             }
             ast::Item::Mod(mod_item) => {
                 let def_id = *self.defs.ast_to_def.get(&item.ast_id).unwrap();
                 let ident = mod_item.ident.clone().into();
                 let items = mod_item.items.iter().map(|i| self.lower_item(i)).collect();
-                hir::Item::Mod(hir::ModDecl { def_id, ident, items })
+                (hir::Item::Mod(hir::ModDecl { def_id, ident, items }), def_id)
             }
             ast::Item::Impl(impl_item) => {
                 let def_id = *self.defs.ast_to_def.get(&item.ast_id).unwrap();
@@ -107,18 +122,21 @@ impl<'ast> AstLowerer<'ast> {
                 let self_ty = self.lower_type(&impl_item.self_ty);
                 let of_trait = impl_item.for_trait.as_ref().map(|t| self.lower_path(t));
                 let items = impl_item.items.iter().map(|i| self.lower_associated_item(i)).collect();
-                hir::Item::Impl(hir::ImplDecl {
+                (
+                    hir::Item::Impl(hir::ImplDecl {
+                        def_id,
+                        generics,
+                        self_ty,
+                        of_trait,
+                        items,
+                    }),
                     def_id,
-                    generics,
-                    self_ty,
-                    of_trait,
-                    items,
-                })
+                )
             }
             ast::Item::ExternFn(extern_fn_item) => {
                 let def_id = *self.defs.ast_to_def.get(&item.ast_id).unwrap();
                 let sig = self.lower_fn_sig(&extern_fn_item.sig);
-                hir::Item::ExternFn(hir::ExternFnDecl { def_id, sig })
+                (hir::Item::ExternFn(hir::ExternFnDecl { def_id, sig }), def_id)
             }
             ast::Item::Const(const_item) => {
                 let def_id = *self.defs.ast_to_def.get(&item.ast_id).unwrap();
@@ -130,13 +148,16 @@ impl<'ast> AstLowerer<'ast> {
                     .collect();
                 let ty = self.lower_type(&const_item.type_annotation);
                 let expr = self.lower_expr(&const_item.expr);
-                hir::Item::Const(hir::ConstDecl {
+                (
+                    hir::Item::Const(hir::ConstDecl {
+                        def_id,
+                        ident,
+                        generics,
+                        ty,
+                        expr,
+                    }),
                     def_id,
-                    ident,
-                    generics,
-                    ty,
-                    expr,
-                })
+                )
             }
             ast::Item::Use(_) => unreachable!("Should already be filtered out"),
             ast::Item::TyAlias(ty_alias_item) => {
@@ -147,18 +168,22 @@ impl<'ast> AstLowerer<'ast> {
                     .iter()
                     .map(|g| self.lower_generic_param(g))
                     .collect();
-                let ty = ty_alias_item.ty.as_ref().map(|t| self.lower_type(t));
-                hir::Item::TyAlias(hir::TyAlias {
+                let ty = self.lower_type(&ty_alias_item.ty);
+                (
+                    hir::Item::TyAlias(hir::TyAlias {
+                        def_id,
+                        ident,
+                        generics,
+                        ty,
+                    }),
                     def_id,
-                    ident,
-                    generics,
-                    ty,
-                })
+                )
             }
         };
 
         let hir_node = HirNode::new(hir_item, item.span);
         self.insert_node(hir_node.hir_id, hir::Node::Item(hir_node.clone()));
+        self.insert_def(def_id, hir_node.hir_id);
         hir_node
     }
 
@@ -225,6 +250,7 @@ impl<'ast> AstLowerer<'ast> {
             generic_param.span,
         );
         self.insert_node(hir_node.hir_id, hir::Node::GenericParam(hir_node.clone()));
+        self.insert_def(def_id, hir_node.hir_id);
         hir_node
     }
 
@@ -620,12 +646,12 @@ impl<'ast> AstLowerer<'ast> {
         let hir_data = match &data.node {
             ast::VariantData::Unit => hir::VariantData::Unit,
             ast::VariantData::Struct { fields } => {
-                let fields = fields.iter().map(|f| self.lower_struct_field(f)).collect();
+                let fields = fields.iter().map(|field| self.lower_struct_field(field)).collect();
                 hir::VariantData::Struct { fields }
             }
-            ast::VariantData::Tuple { types } => {
-                let types = types.iter().map(|t| self.lower_type(t)).collect();
-                hir::VariantData::Tuple { types }
+            ast::VariantData::Tuple { fields } => {
+                let fields = fields.iter().map(|field| self.lower_struct_field(field)).collect();
+                hir::VariantData::Tuple { fields }
             }
         };
         let hir_node = HirNode::new(hir_data, data.span);
@@ -633,12 +659,13 @@ impl<'ast> AstLowerer<'ast> {
         hir_node
     }
 
-    fn lower_struct_field(&mut self, field: &AstNode<ast::StructFieldDef>) -> HirNode<hir::StructField> {
+    fn lower_struct_field(&mut self, field: &AstNode<ast::FieldDef>) -> HirNode<hir::FieldDef> {
         let def_id = *self.defs.ast_to_def.get(&field.ast_id).unwrap();
         let ident = field.node.ident.clone().into();
         let ty = self.lower_type(&field.node.type_annotation);
-        let hir_node = HirNode::new(hir::StructField { def_id, ident, ty }, field.span);
+        let hir_node = HirNode::new(hir::FieldDef { def_id, ident, ty }, field.span);
         self.insert_node(hir_node.hir_id, hir::Node::Field(hir_node.clone()));
+        self.insert_def(def_id, hir_node.hir_id);
         hir_node
     }
 
@@ -648,10 +675,12 @@ impl<'ast> AstLowerer<'ast> {
         let data = self.lower_variant_data(&variant.node.data);
         let hir_node = HirNode::new(hir::EnumVariant { def_id, ident, data }, variant.span);
         self.insert_node(hir_node.hir_id, hir::Node::Variant(hir_node.clone()));
+        self.insert_def(def_id, hir_node.hir_id);
         hir_node
     }
 
     fn lower_associated_item(&mut self, item: &AstNode<ast::AssociatedItem>) -> HirNode<hir::AssociatedItem> {
+        let def_id = *self.defs.ast_to_def.get(&item.ast_id).unwrap();
         let hir_item = match &item.node {
             ast::AssociatedItem::Fn(sig, body) => {
                 let sig = self.lower_fn_sig(sig);
@@ -659,7 +688,6 @@ impl<'ast> AstLowerer<'ast> {
                 hir::AssociatedItem::Fn(sig, body)
             }
             ast::AssociatedItem::Type(ty_alias) => {
-                let def_id = *self.defs.ast_to_def.get(&item.ast_id).unwrap();
                 let ident = ty_alias.node.ident.clone().into();
                 let generics = ty_alias
                     .node
@@ -669,7 +697,7 @@ impl<'ast> AstLowerer<'ast> {
                     .collect();
                 let ty = ty_alias.node.ty.as_ref().map(|t| self.lower_type(t));
                 hir::AssociatedItem::Type(HirNode::new(
-                    hir::TyAlias {
+                    hir::AssocTyAlias {
                         def_id,
                         ident,
                         generics,
@@ -681,6 +709,7 @@ impl<'ast> AstLowerer<'ast> {
         };
         let hir_node = HirNode::new(hir_item, item.span);
         self.insert_node(hir_node.hir_id, hir::Node::AssociatedItem(hir_node.clone()));
+        self.insert_def(def_id, hir_node.hir_id);
         hir_node
     }
 }

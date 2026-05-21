@@ -41,10 +41,29 @@ pub enum Ty {
     Ptr(Box<Ty>),
     FnPtr(Vec<Ty>, Box<Ty>),
     Fn(DefId, GenericArgs),
-    Struct(DefId, GenericArgs),
-    Enum(DefId, GenericArgs),
+    Struct {
+        def_id: DefId,
+        fields: VariantData,
+        generic_args: GenericArgs,
+    },
+    Enum {
+        def_id: DefId,
+        variants: Vec<EnumVariant>,
+        generic_args: GenericArgs,
+    },
     Never,
     GenericParam(DefId),
     TyVar(TyVarId),
     Err,
+}
+
+#[derive(Clone, Debug)]
+pub struct VariantData {
+    pub fields: Vec<DefId>,
+}
+
+#[derive(Clone, Debug)]
+pub struct EnumVariant {
+    pub def_id: DefId,
+    pub variant_data: VariantData,
 }

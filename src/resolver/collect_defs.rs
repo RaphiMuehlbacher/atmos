@@ -1,4 +1,4 @@
-use crate::parser::ast::{AssociatedItem, AstNode, EnumVariant, GenericParam, Item, StructFieldDef};
+use crate::parser::ast::{AssociatedItem, AstNode, EnumVariant, FieldDef, GenericParam, Item};
 use crate::resolver::defs::DefKind;
 use crate::resolver::visitor;
 use crate::Resolver;
@@ -26,7 +26,7 @@ impl<'a, 'r> visitor::Visitor for DefCollector<'a, 'r> {
         visitor::walk_generic_param(self, generic_param);
     }
 
-    fn visit_struct_field_def(&mut self, struct_field_def: &AstNode<StructFieldDef>) {
+    fn visit_struct_field_def(&mut self, struct_field_def: &AstNode<FieldDef>) {
         self.resolver.defs.insert(struct_field_def.ast_id, DefKind::StructField);
 
         visitor::walk_struct_field_def(self, struct_field_def);
@@ -50,7 +50,7 @@ impl<'a, 'r> visitor::Visitor for DefCollector<'a, 'r> {
                 DefKind::AssocFn
             }
             AssociatedItem::Type(ty_alias) => {
-                visitor::walk_ty_alias(self, ty_alias);
+                visitor::walk_assoc_ty_alias(self, ty_alias);
                 DefKind::AssocTypeAlias
             }
         };

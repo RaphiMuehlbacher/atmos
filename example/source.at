@@ -1,5 +1,4 @@
-fn test<A, B>(a: A, b: B) -> A {
-}
+struct S(i32);
 /*
 enum Option<T> {
     Some(T),

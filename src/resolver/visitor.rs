@@ -1,8 +1,8 @@
 use crate::parser::ast::{
-    AssociatedItem, AstNode, BlockExpr, CallExpr, ConstDecl, Crate, EnumDecl, EnumVariant, Expr, ExternFnDecl, FnDecl,
-    FnSig, GenericArg, GenericParam, Ident, ImplDecl, Item, LetStmt, MatchArm, MethodCallExpr, ModDecl, Param, Path,
-    PathSegment, Pattern, Stmt, StructDecl, StructExpr, StructExprField, StructFieldDef, TraitDecl, Ty, TyAliasDecl,
-    VariantData,
+    AssocTyAlias, AssociatedItem, AstNode, BlockExpr, CallExpr, ConstDecl, Crate, EnumDecl, EnumVariant, Expr,
+    ExternFnDecl, FieldDef, FnDecl, FnSig, GenericArg, GenericParam, Ident, ImplDecl, Item, LetStmt, MatchArm,
+    MethodCallExpr, ModDecl, Param, Path, PathSegment, Pattern, Stmt, StructDecl, StructExpr, StructExprField,
+    TraitDecl, Ty, TyAlias, VariantData,
 };
 
 #[macro_export]
@@ -70,7 +70,7 @@ pub trait Visitor: Sized {
         walk_variant_data(self, variant_data);
     }
 
-    fn visit_struct_field_def(&mut self, struct_field_def: &AstNode<StructFieldDef>) {
+    fn visit_struct_field_def(&mut self, struct_field_def: &AstNode<FieldDef>) {
         walk_struct_field_def(self, struct_field_def)
     }
     fn visit_enum_variant(&mut self, enum_variant: &AstNode<EnumVariant>) {
@@ -81,8 +81,12 @@ pub trait Visitor: Sized {
         walk_assoc_item(self, assoc_item);
     }
 
-    fn visit_ty_alias(&mut self, ty_alias: &AstNode<TyAliasDecl>) {
+    fn visit_ty_alias(&mut self, ty_alias: &AstNode<TyAlias>) {
         walk_ty_alias(self, ty_alias)
+    }
+
+    fn visit_assoc_ty_alias(&mut self, assoc_ty_alias: &AstNode<AssocTyAlias>) {
+        walk_assoc_ty_alias(self, assoc_ty_alias)
     }
 
     fn visit_path(&mut self, path: &AstNode<Path>) {
@@ -172,10 +176,10 @@ pub fn walk_item(visitor: &mut impl Visitor, item: &AstNode<Item>) {
             visitor.visit_path(&use_item.path);
         }
         Item::TyAlias(ty_alias) => {
-            let TyAliasDecl { ident, generics, ty } = &ty_alias;
+            let TyAlias { ident, generics, ty } = &ty_alias;
             visitor.visit_ident(ident);
             visit_list!(visitor, visit_generic_param, generics);
-            visit_opt!(visitor, visit_type, ty);
+            visitor.visit_type(ty);
         }
     }
 }
@@ -190,8 +194,9 @@ pub fn walk_fn_sig(visitor: &mut impl Visitor, fn_sig: &AstNode<FnSig>) {
 pub fn walk_variant_data(visitor: &mut impl Visitor, variant_data: &AstNode<VariantData>) {
     match &variant_data.node {
         VariantData::Unit => {}
-        VariantData::Struct { fields } => visit_list!(visitor, visit_struct_field_def, fields),
-        VariantData::Tuple { types } => visit_list!(visitor, visit_type, types),
+        VariantData::Struct { fields } | VariantData::Tuple { fields } => {
+            visit_list!(visitor, visit_struct_field_def, fields)
+        }
     }
 }
 
@@ -200,7 +205,7 @@ pub fn walk_enum_variant(visitor: &mut impl Visitor, enum_variant: &AstNode<Enum
     visitor.visit_variant_data(&enum_variant.node.data)
 }
 
-pub fn walk_struct_field_def(visitor: &mut impl Visitor, struct_field_def: &AstNode<StructFieldDef>) {
+pub fn walk_struct_field_def(visitor: &mut impl Visitor, struct_field_def: &AstNode<FieldDef>) {
     visitor.visit_ident(&struct_field_def.node.ident);
     visitor.visit_type(&struct_field_def.node.type_annotation);
 }
@@ -211,14 +216,20 @@ pub fn walk_assoc_item(visitor: &mut impl Visitor, assoc_item: &AstNode<Associat
             visitor.visit_fn_sig(sig);
             visit_opt!(visitor, visit_block, block);
         }
-        AssociatedItem::Type(ty_alias) => visitor.visit_ty_alias(ty_alias),
+        AssociatedItem::Type(ty_alias) => visitor.visit_assoc_ty_alias(ty_alias),
     }
 }
 
-pub fn walk_ty_alias(visitor: &mut impl Visitor, ty_alias: &AstNode<TyAliasDecl>) {
+pub fn walk_assoc_ty_alias(visitor: &mut impl Visitor, assoc_ty_alias: &AstNode<AssocTyAlias>) {
+    visitor.visit_ident(&assoc_ty_alias.node.ident);
+    visit_list!(visitor, visit_generic_param, &assoc_ty_alias.node.generics);
+    visit_opt!(visitor, visit_type, &assoc_ty_alias.node.ty);
+}
+
+pub fn walk_ty_alias(visitor: &mut impl Visitor, ty_alias: &AstNode<TyAlias>) {
     visitor.visit_ident(&ty_alias.node.ident);
     visit_list!(visitor, visit_generic_param, &ty_alias.node.generics);
-    visit_opt!(visitor, visit_type, &ty_alias.node.ty);
+    visitor.visit_type(&ty_alias.node.ty);
 }
 
 pub fn walk_path(visitor: &mut impl Visitor, path: &AstNode<Path>) {
