@@ -1,4 +1,8 @@
-struct S(i32);
+enum E {
+    A,
+    B,
+    C
+}
 /*
 enum Option<T> {
     Some(T),

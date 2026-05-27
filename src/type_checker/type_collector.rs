@@ -153,7 +153,7 @@ impl<'hir> TypeCollector<'hir> {
             Node::FnSig(fn_sig) => todo!(),
             Node::GenericParam(generic_param) => todo!(),
             Node::AssociatedItem(assoc_item) => todo!(),
-            Node::Variant(variant) => todo!(),
+            Node::Variant(variant) => self.type_of(variant.node.owner),
             Node::VariantData(variant_data) => todo!(),
             Node::Field(field) => self.lower_ty(&field.node.ty),
             Node::Ty(ty) => todo!(),
