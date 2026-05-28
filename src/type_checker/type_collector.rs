@@ -1,5 +1,5 @@
 use crate::ast_lowerer::hir;
-use crate::ast_lowerer::hir::{Crate, GenericParamKind, HirId, HirNode, Item, Node, Path, VariantData};
+use crate::ast_lowerer::hir::{AssociatedItem, Crate, GenericParamKind, HirId, HirNode, Item, Node, Path, VariantData};
 use crate::resolver::defs::DefKind;
 use crate::resolver::ribs::{PrimTy, Res};
 use crate::resolver::DefId;
@@ -35,11 +35,6 @@ impl<'hir> TypeCollector<'hir> {
     pub fn collect_items(&mut self) {
         for item in &self.hir_krate.items {
             self.collect_item_def(item);
-        }
-
-        for def_id in self.def_to_hir.keys() {
-            let ty = self.type_of(*def_id);
-            println!("{def_id:?}: {ty:?}");
         }
     }
 
@@ -139,36 +134,30 @@ impl<'hir> TypeCollector<'hir> {
                         variants,
                     }
                 }
-                Item::Trait(trait_decl) => todo!(),
-                Item::Mod(mod_decl) => todo!(),
-                Item::Impl(impl_item) => todo!(),
+                Item::Impl(impl_item) => self.lower_ty(&impl_item.self_ty),
                 Item::ExternFn(extern_fn) => {
                     let generic_args = self.lower_generic_params(&extern_fn.sig.node.generics);
                     ty::Ty::Fn(def_id, generic_args)
                 }
-                Item::Const(const_decl) => todo!(),
+                Item::Const(const_decl) => self.lower_ty(&const_decl.ty),
                 Item::TyAlias(ty_alias) => self.lower_ty(&ty_alias.ty),
+                Item::Mod(_) | Item::Trait(_) => panic!("Unexpected Item type: {:?}", item.node),
             },
-            Node::Param(param) => todo!(),
-            Node::FnSig(fn_sig) => todo!(),
-            Node::GenericParam(generic_param) => todo!(),
-            Node::AssociatedItem(assoc_item) => todo!(),
+            Node::GenericParam(generic_param) => todo!("add default type for GenericParamKind::Type"),
+            Node::AssociatedItem(assoc_item) => match &assoc_item.node {
+                AssociatedItem::Fn(sig, _) => {
+                    let generic_args = self.lower_generic_params(&sig.node.generics);
+                    ty::Ty::Fn(def_id, generic_args)
+                }
+                AssociatedItem::Type(ty_alias) => match &ty_alias.node.ty {
+                    Some(ty) => self.lower_ty(ty),
+                    None => panic!("associated type missing default"),
+                },
+            },
             Node::Variant(variant) => self.type_of(variant.node.owner),
-            Node::VariantData(variant_data) => todo!(),
             Node::Field(field) => self.lower_ty(&field.node.ty),
-            Node::Ty(ty) => todo!(),
-            Node::Path(path) => todo!(),
-            Node::PathSegment(path_segment) => todo!(),
-            Node::Ident(ident) => todo!(),
-            Node::Pattern(pattern) => todo!(),
-            Node::PatField(pat_field) => todo!(),
-            Node::Expr(expr) => todo!(),
-            Node::ExprField(expr_field) => todo!(),
-            Node::Stmt(stmt) => todo!(),
-            Node::LetStmt(let_stmt) => todo!(),
-            Node::Arm(arm) => todo!(),
-            Node::Block(block) => todo!(),
             Node::Err => todo!(),
+            _ => unreachable!(),
         }
     }
 
