@@ -1,0 +1,9 @@
+resolver::unresolved_path
+
+  × Cannot resolve path `test::S`
+   ╭─[example/source.at:1:5]
+ 1 │ use test::S;
+   ·     ───┬───
+   ·        ╰── unresolved path
+ 2 │
+   ╰────
