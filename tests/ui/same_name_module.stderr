@@ -1,9 +1,10 @@
 resolver::unresolved_path
 
-  × Cannot resolve path `test::S`
-   ╭─[example/source.at:1:5]
- 1 │ use test::S;
-   ·     ───┬───
-   ·        ╰── unresolved path
- 2 │
+  × Cannot resolve path `foo`
+   ╭─[tests/ui\same_name_module.at:2:13]
+ 1 │ fn main() {
+ 2 │     let a = foo();
+   ·             ─┬─
+   ·              ╰── unresolved path
+ 3 │ }
    ╰────

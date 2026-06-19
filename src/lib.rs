@@ -5,6 +5,7 @@ pub mod lexer;
 pub mod parser;
 pub mod resolver;
 pub mod session;
+pub mod test_runner;
 pub mod type_checker;
 
 pub use ast_lowerer::AstLowerer;
