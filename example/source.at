@@ -1,15 +1,8 @@
-use test::S;
+struct A;
 
-mod test {
-    struct S;
+fn test<A>(a: A) {
+    struct Bar;
 }
-enum E {
-    A,
-    B,
-    C
-}
-
-fn test(a: i32, b: E) {}
 /*
 enum Option<T> {
     Some(T),

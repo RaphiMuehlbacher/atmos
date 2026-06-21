@@ -107,7 +107,13 @@ pub struct PatternStructField {
 }
 
 #[derive(Debug, Clone)]
-pub enum AssociatedItem {
+pub struct AssociatedItem {
+    pub parent: DefId,
+    pub kind: AssociatedItemKind,
+}
+
+#[derive(Debug, Clone)]
+pub enum AssociatedItemKind {
     Fn(HirNode<FnSig>, Option<HirNode<BlockExpr>>),
     Type(HirNode<AssocTyAlias>),
 }
