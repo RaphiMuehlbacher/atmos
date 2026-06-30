@@ -23,6 +23,7 @@ impl Person {
 
 fn test(a: Person::A) {}
 */
+
 /*
 enum Option<T> {
     Some(T),
@@ -62,6 +63,7 @@ impl Iterator for Counter {
         }
     }
 }
+
 
 fn main() {
     let counter = Counter::new(10);
