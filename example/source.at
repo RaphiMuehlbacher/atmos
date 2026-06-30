@@ -1,8 +1,21 @@
-struct A;
-
-fn test<A>(a: A) {
-    struct Bar;
+enum B {
+    X(A),
+    Y {
+        a: i32,
+        b: A,
+    },
 }
+
+struct A {
+    a: B,
+}
+
+
+
+
+
+
+
 /*
 enum Option<T> {
     Some(T),
