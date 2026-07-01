@@ -1,7 +1,9 @@
+use crate::Session;
 use crate::error::CompilerError;
 use crate::extension::SourceSpanExt;
 use crate::lexer::token_kind::{Delimiter, Kw, Literal, Punct};
 use crate::lexer::{Token, TokenKind};
+use crate::parser::ParserError;
 use crate::parser::ast::{
     AddrOfExpr, ArrayExpr, AssignExpr, AssignOp, AssignOpExpr, AssocTyAlias, AssociatedItem, AstNode, BinOp,
     BinaryExpr, BlockExpr, BreakExpr, CallExpr, CastExpr, ConstDecl, Crate, EnumDecl, EnumVariant, Expr, ExternFnDecl,
@@ -10,8 +12,6 @@ use crate::parser::ast::{
     Param, Path, PathExpr, PathSegment, Pattern, PatternStructField, ReturnExpr, Stmt, StructDecl, StructExpr,
     StructExprField, TraitDecl, TupleExpr, Ty, TyAlias, UnOp, UnaryExpr, UseItem, VariantData, WhileExpr,
 };
-use crate::parser::ParserError;
-use crate::Session;
 use miette::SourceSpan;
 
 type PResult<T> = Result<T, ParserError>;
@@ -494,15 +494,15 @@ impl<'a> Parser<'a> {
                 AssociatedItem::Fn(fn_decl, body)
             }
             TokenKind::Keyword(Kw::Type) => {
+                self.advance();
                 let ident = self.parse_ident()?;
                 let generics = self.parse_generic_params()?;
-
-                self.expect_consume(&TokenKind::Punctuation(Punct::Eq))?;
 
                 let ty = if self.check(&[TokenKind::Punctuation(Punct::Semicolon)]) {
                     self.advance();
                     None
                 } else {
+                    self.expect_consume(&TokenKind::Punctuation(Punct::Eq))?;
                     let ty = self.parse_type()?;
                     self.consume(&[TokenKind::Punctuation(Punct::Semicolon)]);
                     Some(ty)
