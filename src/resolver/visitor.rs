@@ -71,7 +71,7 @@ pub trait Visitor: Sized {
     }
 
     fn visit_struct_field_def(&mut self, struct_field_def: &AstNode<FieldDef>) {
-        walk_struct_field_def(self, struct_field_def)
+        walk_struct_field_def(self, struct_field_def);
     }
     fn visit_enum_variant(&mut self, enum_variant: &AstNode<EnumVariant>) {
         walk_enum_variant(self, enum_variant);
@@ -82,11 +82,11 @@ pub trait Visitor: Sized {
     }
 
     fn visit_ty_alias(&mut self, ty_alias: &AstNode<TyAlias>) {
-        walk_ty_alias(self, ty_alias)
+        walk_ty_alias(self, ty_alias);
     }
 
     fn visit_assoc_ty_alias(&mut self, assoc_ty_alias: &AstNode<AssocTyAlias>) {
-        walk_assoc_ty_alias(self, assoc_ty_alias)
+        walk_assoc_ty_alias(self, assoc_ty_alias);
     }
 
     fn visit_path(&mut self, path: &AstNode<Path>) {
@@ -202,7 +202,7 @@ pub fn walk_variant_data(visitor: &mut impl Visitor, variant_data: &AstNode<Vari
 
 pub fn walk_enum_variant(visitor: &mut impl Visitor, enum_variant: &AstNode<EnumVariant>) {
     visitor.visit_ident(&enum_variant.node.ident);
-    visitor.visit_variant_data(&enum_variant.node.data)
+    visitor.visit_variant_data(&enum_variant.node.data);
 }
 
 pub fn walk_struct_field_def(visitor: &mut impl Visitor, struct_field_def: &AstNode<FieldDef>) {
@@ -303,8 +303,6 @@ pub fn walk_expr(visitor: &mut impl Visitor, expr: &AstNode<Expr>) {
         Expr::Path(path_expr) => visitor.visit_path(&path_expr.path),
         Expr::AddrOf(addr_of_expr) => visitor.visit_expr(&addr_of_expr.expr),
         Expr::Break(break_expr) => visit_opt!(visitor, visit_expr, &break_expr.expr),
-        Expr::Continue => {}
-        Expr::Literal(_) => {}
         Expr::Binary(binary_expr) => {
             visitor.visit_expr(&binary_expr.left);
             visitor.visit_expr(&binary_expr.right);
@@ -323,9 +321,8 @@ pub fn walk_expr(visitor: &mut impl Visitor, expr: &AstNode<Expr>) {
             visitor.visit_expr(&match_expr.value);
             visit_list!(visitor, visit_match_arm, &match_expr.arms);
         }
-        Expr::Let(_let_expr) => {}
         Expr::Paren(paren_expr) => visitor.visit_expr(paren_expr),
-        Expr::Err => {}
+        Expr::Let(_) | Expr::Continue | Expr::Literal(_) | Expr::Err => {}
     }
 }
 
@@ -341,8 +338,7 @@ pub fn walk_stmt(visitor: &mut impl Visitor, stmt: &AstNode<Stmt>) {
             let let_stmt_node = AstNode::with_id(let_stmt.clone(), stmt.span, stmt.ast_id);
             visitor.visit_let_stmt(&let_stmt_node);
         }
-        Stmt::Expr(expr) => visitor.visit_expr(expr),
-        Stmt::Semi(expr) => visitor.visit_expr(expr),
+        Stmt::Expr(expr) | Stmt::Semi(expr) => visitor.visit_expr(expr),
         Stmt::Err => {}
     }
 }
@@ -374,13 +370,12 @@ pub fn walk_type(visitor: &mut impl Visitor, ty: &AstNode<Ty>) {
             visitor.visit_type(ty);
             visitor.visit_expr(expr);
         }
-        Ty::Ptr(ty) => visitor.visit_type(ty),
+        Ty::Ptr(ty) | Ty::Paren(ty) => visitor.visit_type(ty),
         Ty::Fn(params, return_ty) => {
             visit_list!(visitor, visit_type, params);
             visit_opt!(visitor, visit_type, return_ty.as_ref());
         }
         Ty::Tuple(types) => visit_list!(visitor, visit_type, types),
-        Ty::Paren(ty) => visitor.visit_type(ty),
         Ty::Err => {}
     }
 }
@@ -388,7 +383,7 @@ pub fn walk_type(visitor: &mut impl Visitor, ty: &AstNode<Ty>) {
 pub fn walk_pattern(visitor: &mut impl Visitor, pattern: &AstNode<Pattern>) {
     match &pattern.node {
         Pattern::Wildcard | Pattern::Err => {}
-        Pattern::Or(patterns) => visit_list!(visitor, visit_pattern, patterns),
+        Pattern::Or(patterns) | Pattern::Tuple(patterns) => visit_list!(visitor, visit_pattern, patterns),
         Pattern::Path(path) => visitor.visit_path(path),
         Pattern::Struct(path, fields) => {
             visitor.visit_path(path);
@@ -401,7 +396,6 @@ pub fn walk_pattern(visitor: &mut impl Visitor, pattern: &AstNode<Pattern>) {
             visitor.visit_path(path);
             visit_list!(visitor, visit_pattern, patterns);
         }
-        Pattern::Tuple(patterns) => visit_list!(visitor, visit_pattern, patterns),
         Pattern::Expr(expr) => visitor.visit_expr(expr),
         Pattern::Paren(pattern) => visitor.visit_pattern(pattern),
     }

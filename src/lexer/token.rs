@@ -1,5 +1,5 @@
-use crate::lexer::token_kind::{Kw, Punct};
 use crate::lexer::TokenKind;
+use crate::lexer::token_kind::{Kw, Punct};
 use miette::SourceSpan;
 use std::fmt::{Display, Formatter, Result};
 
@@ -10,34 +10,32 @@ pub struct Token {
 }
 
 impl Token {
+    #[must_use]
     pub fn new(kind: TokenKind, span: SourceSpan) -> Self {
         Self { kind, span }
     }
+
+    #[must_use]
     pub fn can_begin_expr(&self) -> bool {
-        match self.kind {
+        matches!(
+            self.kind,
             TokenKind::Literal(_)
-            | TokenKind::Keyword(_)
-            | TokenKind::Punctuation(Punct::Bang)
-            | TokenKind::Punctuation(Punct::Minus)
-            | TokenKind::Punctuation(Punct::Star)
-            | TokenKind::OpeningDelimiter(_)
-            | TokenKind::Punctuation(Punct::Ampersand) => true,
-            _ => false,
-        }
+                | TokenKind::Keyword(_)
+                | TokenKind::Punctuation(Punct::Bang)
+                | TokenKind::Punctuation(Punct::Minus)
+                | TokenKind::Punctuation(Punct::Star)
+                | TokenKind::OpeningDelimiter(_)
+                | TokenKind::Punctuation(Punct::Ampersand)
+        )
     }
 
+    #[must_use]
     pub fn begins_item(&self) -> bool {
         matches!(
             self.kind,
-            TokenKind::Keyword(Kw::Fn)
-                | TokenKind::Keyword(Kw::Struct)
-                | TokenKind::Keyword(Kw::Enum)
-                | TokenKind::Keyword(Kw::Impl)
-                | TokenKind::Keyword(Kw::Trait)
-                | TokenKind::Keyword(Kw::Extern)
-                | TokenKind::Keyword(Kw::Const)
-                | TokenKind::Keyword(Kw::Use)
-                | TokenKind::Keyword(Kw::Type)
+            TokenKind::Keyword(
+                Kw::Fn | Kw::Struct | Kw::Enum | Kw::Impl | Kw::Trait | Kw::Extern | Kw::Const | Kw::Use | Kw::Type
+            )
         )
     }
 }

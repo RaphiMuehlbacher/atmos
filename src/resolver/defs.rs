@@ -1,5 +1,5 @@
-use crate::parser::ast::Item;
 use crate::parser::AstId;
+use crate::parser::ast::Item;
 use crate::resolver::ribs::Res;
 use std::collections::HashMap;
 
@@ -33,10 +33,12 @@ impl DefinitionMap {
         self.ast_to_def.insert(ast_id, def_id);
     }
 
+    #[must_use]
     pub fn get_definition(&self, def_id: DefId) -> Option<&Definition> {
         self.definitions.get(&def_id)
     }
 
+    #[must_use]
     pub fn get_def_from_ast(&self, ast_id: AstId) -> Option<&DefId> {
         self.ast_to_def.get(&ast_id)
     }
@@ -45,6 +47,7 @@ impl DefinitionMap {
         self.resolutions.insert(ast_id, resolution);
     }
 
+    #[must_use]
     pub fn get_resolution(&self, ast_id: AstId) -> Option<&Res> {
         self.resolutions.get(&ast_id)
     }
@@ -57,6 +60,7 @@ pub struct Definition {
 }
 
 impl Definition {
+    #[must_use]
     pub fn new(def_id: DefId, kind: DefKind) -> Self {
         Self { def_id, kind }
     }
@@ -84,16 +88,16 @@ pub enum DefKind {
 impl From<&Item> for DefKind {
     fn from(value: &Item) -> Self {
         match value {
-            Item::Fn(_) => DefKind::Function,
-            Item::Struct(_) => DefKind::Struct,
-            Item::Enum(_) => DefKind::Enum,
-            Item::Trait(_) => DefKind::Trait,
-            Item::Mod(_) => DefKind::Mod,
-            Item::Impl(_) => DefKind::Impl,
-            Item::ExternFn(_) => DefKind::ExternFn,
-            Item::Const(_) => DefKind::Const,
-            Item::Use(_) => DefKind::Use,
-            Item::TyAlias(_) => DefKind::TypeAlias,
+            Item::Fn(_) => Self::Function,
+            Item::Struct(_) => Self::Struct,
+            Item::Enum(_) => Self::Enum,
+            Item::Trait(_) => Self::Trait,
+            Item::Mod(_) => Self::Mod,
+            Item::Impl(_) => Self::Impl,
+            Item::ExternFn(_) => Self::ExternFn,
+            Item::Const(_) => Self::Const,
+            Item::Use(_) => Self::Use,
+            Item::TyAlias(_) => Self::TypeAlias,
         }
     }
 }
@@ -105,6 +109,7 @@ pub struct PartialRes {
 }
 
 impl PartialRes {
+    #[must_use]
     pub fn new(base_res: Res, unresolved_segments: usize) -> Self {
         Self {
             base_res,
@@ -112,10 +117,12 @@ impl PartialRes {
         }
     }
 
+    #[must_use]
     pub fn base_res(&self) -> Res {
         self.base_res.clone()
     }
 
+    #[must_use]
     pub fn unresolved_segments(&self) -> usize {
         self.unresolved_segments
     }

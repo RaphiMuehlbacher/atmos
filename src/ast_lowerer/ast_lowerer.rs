@@ -13,6 +13,7 @@ pub struct AstLowerer<'ast> {
 }
 
 impl<'ast> AstLowerer<'ast> {
+    #[must_use]
     pub fn new(defs: &'ast DefinitionMap, ast: &'ast ast::Crate) -> Self {
         Self {
             ast,
@@ -245,10 +246,10 @@ impl<'ast> AstLowerer<'ast> {
             .node
             .bounds
             .iter()
-            .map(|bound| self.lower_path(&bound))
+            .map(|bound| self.lower_path(bound))
             .collect();
         let kind = match &generic_param.node.kind {
-            ast::GenericParamKind::Const(ty) => hir::GenericParamKind::Const(self.lower_type(&ty)),
+            ast::GenericParamKind::Const(ty) => hir::GenericParamKind::Const(self.lower_type(ty)),
             ast::GenericParamKind::Type => hir::GenericParamKind::Type,
         };
 
@@ -291,9 +292,10 @@ impl<'ast> AstLowerer<'ast> {
         hir_node
     }
 
-    fn lower_segments(&mut self, segments: &Vec<AstNode<ast::PathSegment>>) -> Vec<HirNode<hir::PathSegment>> {
-        segments.iter().map(|segment| self.lower_segment(&segment)).collect()
+    fn lower_segments(&mut self, segments: &[AstNode<ast::PathSegment>]) -> Vec<HirNode<hir::PathSegment>> {
+        segments.iter().map(|segment| self.lower_segment(segment)).collect()
     }
+
     fn lower_segment(&mut self, segment: &AstNode<ast::PathSegment>) -> HirNode<hir::PathSegment> {
         let ident = segment.node.ident.clone().into();
         let args = segment
@@ -346,8 +348,8 @@ impl<'ast> AstLowerer<'ast> {
             ast::Stmt::Item(item) => hir::Stmt::Item(self.lower_item(item)),
             ast::Stmt::Let(let_stmt) => {
                 let pattern = self.lower_pattern(&let_stmt.pat);
-                let ty = let_stmt.type_annotation.as_ref().map(|ty| self.lower_type(&ty));
-                let expr = let_stmt.expr.as_ref().map(|expr| Box::new(self.lower_expr(&expr)));
+                let ty = let_stmt.type_annotation.as_ref().map(|ty| self.lower_type(ty));
+                let expr = let_stmt.expr.as_ref().map(|expr| Box::new(self.lower_expr(expr)));
 
                 hir::Stmt::Let(hir::LetStmt { pattern, ty, expr })
             }
@@ -451,7 +453,7 @@ impl<'ast> AstLowerer<'ast> {
                 let lhs = Box::new(self.lower_expr(&assign_op_expr.target));
                 let rhs_left = Box::new(self.lower_expr(&assign_op_expr.target));
                 let rhs_right = Box::new(self.lower_expr(&assign_op_expr.value));
-                let bin_op = self.lower_assign_op(&assign_op_expr.op.node);
+                let bin_op = Self::lower_assign_op(assign_op_expr.op.node);
                 let rhs = Box::new(HirNode::new(
                     hir::Expr::Binary(hir::BinaryExpr {
                         lhs: rhs_left,
@@ -486,17 +488,17 @@ impl<'ast> AstLowerer<'ast> {
             }
             ast::Expr::Continue => hir::Expr::Continue,
             ast::Expr::Literal(lit_expr) => {
-                let lit = self.lower_literal(lit_expr);
+                let lit = Self::lower_literal(lit_expr);
                 hir::Expr::Literal(lit)
             }
             ast::Expr::Binary(binary_expr) => {
                 let lhs = Box::new(self.lower_expr(&binary_expr.left));
-                let op = self.lower_bin_op(&binary_expr.operator.node);
+                let op = Self::lower_bin_op(binary_expr.operator.node);
                 let rhs = Box::new(self.lower_expr(&binary_expr.right));
                 hir::Expr::Binary(hir::BinaryExpr { lhs, op, rhs })
             }
             ast::Expr::Unary(unary_expr) => {
-                let op = self.lower_un_op(&unary_expr.operator.node);
+                let op = Self::lower_un_op(unary_expr.operator.node);
                 let operand = Box::new(self.lower_expr(&unary_expr.operand));
                 hir::Expr::Unary(hir::UnaryExpr { op, operand })
             }
@@ -549,7 +551,7 @@ impl<'ast> AstLowerer<'ast> {
         hir_node
     }
 
-    fn lower_literal(&self, lit: &ast::LiteralExpr) -> hir::Literal {
+    fn lower_literal(lit: &ast::LiteralExpr) -> hir::Literal {
         match lit {
             ast::LiteralExpr::Bool(b) => hir::Literal::Bool(*b),
             ast::LiteralExpr::I32(i) => hir::Literal::I32(*i),
@@ -560,7 +562,7 @@ impl<'ast> AstLowerer<'ast> {
         }
     }
 
-    fn lower_bin_op(&self, op: &ast::BinOp) -> hir::BinOp {
+    fn lower_bin_op(op: ast::BinOp) -> hir::BinOp {
         match op {
             ast::BinOp::Add => hir::BinOp::Add,
             ast::BinOp::Sub => hir::BinOp::Sub,
@@ -578,7 +580,7 @@ impl<'ast> AstLowerer<'ast> {
         }
     }
 
-    fn lower_un_op(&self, op: &ast::UnOp) -> hir::UnOp {
+    fn lower_un_op(op: ast::UnOp) -> hir::UnOp {
         match op {
             ast::UnOp::Deref => hir::UnOp::Deref,
             ast::UnOp::Not => hir::UnOp::Not,
@@ -586,7 +588,7 @@ impl<'ast> AstLowerer<'ast> {
         }
     }
 
-    fn lower_assign_op(&self, op: &ast::AssignOp) -> hir::BinOp {
+    fn lower_assign_op(op: ast::AssignOp) -> hir::BinOp {
         match op {
             ast::AssignOp::AddAssign => hir::BinOp::Add,
             ast::AssignOp::SubAssign => hir::BinOp::Sub,

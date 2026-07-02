@@ -1,5 +1,6 @@
-use crate::parser::ast::Crate;
+use crate::Session;
 use crate::parser::AstId;
+use crate::parser::ast::Crate;
 use crate::resolver::collect_defs::DefCollector;
 use crate::resolver::defs::DefinitionMap;
 use crate::resolver::imports::ImportResolver;
@@ -7,7 +8,6 @@ use crate::resolver::late::LateResolver;
 use crate::resolver::module_builder::{ModuleArena, ModuleBuilder};
 use crate::resolver::modules::{ImportId, ModuleId};
 use crate::resolver::visitor::walk_crate;
-use crate::Session;
 use std::collections::HashMap;
 
 pub struct Resolver<'ast> {
@@ -37,7 +37,7 @@ impl<'ast> Resolver<'ast> {
         self.collect_definitions(self.ast_program);
         self.build_modules(self.ast_program);
         self.resolve_imports();
-        self.resolve_crate(&self.ast_program);
+        self.resolve_crate(self.ast_program);
 
         &self.defs
     }

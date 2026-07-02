@@ -1,3 +1,4 @@
+#![allow(clippy::result_large_err)]
 pub mod ast_lowerer;
 pub mod error;
 pub mod extension;
@@ -32,7 +33,7 @@ pub fn compile_source(session: &Session) {
     let mut type_collector = TypeCollector::new(session, &hir_nodes, &def_to_hir);
     let collected_types = type_collector.collect_items();
 
+    dbg!(&collected_types);
     let mut type_checker = TypeChecker::new(session, &hir, collected_types);
     type_checker.check();
-    // dbg!(type_collector.items);
 }

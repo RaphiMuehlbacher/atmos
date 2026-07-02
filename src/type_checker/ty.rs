@@ -6,10 +6,12 @@ use std::collections::HashMap;
 pub struct TyVarId(u32);
 
 impl TyVarId {
+    #[must_use]
     pub fn new(id: u32) -> Self {
         Self(id)
     }
 
+    #[must_use]
     pub fn index(self) -> u32 {
         self.0
     }
@@ -86,7 +88,7 @@ pub struct Generics {
     pub params: Vec<DefId>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct CollectedTypes {
     pub type_of: HashMap<DefId, Ty>,
     pub fn_sig: HashMap<DefId, FnSig>,
@@ -96,13 +98,8 @@ pub struct CollectedTypes {
 }
 
 impl CollectedTypes {
+    #[must_use]
     pub fn new() -> Self {
-        Self {
-            type_of: HashMap::new(),
-            fn_sig: HashMap::new(),
-            structs: HashMap::new(),
-            enums: HashMap::new(),
-            generics_of: HashMap::new(),
-        }
+        Self::default()
     }
 }

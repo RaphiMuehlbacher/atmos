@@ -1,5 +1,6 @@
 use crate::error::CompilerError;
 use crate::parser::ast::{AstNode, BlockExpr, Expr, GenericArg, Ident, Item, LetStmt, Path, PathSegment, Pattern, Ty};
+use crate::resolver::DefId;
 use crate::resolver::defs::{DefKind, PartialRes};
 use crate::resolver::modules::{Binding, ModuleId, ModuleKind};
 use crate::resolver::ribs::{PrimTy, Res, Rib, RibKind, SelfTyInfo};
@@ -36,8 +37,9 @@ impl<'a, 'r> LateResolver<'a, 'r> {
     }
 
     fn push_rib(&mut self, kind: RibKind) {
-        self.ribs.push(Rib::new(kind))
+        self.ribs.push(Rib::new(kind));
     }
+
     fn pop_rib(&mut self) {
         self.ribs.pop();
     }
@@ -101,31 +103,29 @@ impl<'a, 'r> LateResolver<'a, 'r> {
                         return;
                     }
 
-                    if matches!(source, PatternSource::Match) {
-                        if let Some(res) = self.lookup_value(&name.node) {
-                            match res {
-                                Res::Local(_) | Res::PrimTy(_) | Res::SelfTy(_) | Res::Err => {}
-                                Res::Def(def_id, _) => {
-                                    self.r.defs.insert_ast_id(path.ast_id, def_id);
-                                    return;
-                                }
+                    if matches!(source, PatternSource::Match)
+                        && let Some(res) = self.lookup_value(&name.node)
+                    {
+                        match res {
+                            Res::Local(_) | Res::PrimTy(_) | Res::SelfTy(_) | Res::Err => {}
+                            Res::Def(def_id, _) => {
+                                self.r.defs.insert_ast_id(path.ast_id, def_id);
+                                return;
                             }
                         }
                     }
 
-                    if !pattern_bindings.insert(name.node.clone()) {
-                        if self.innermost_rib().get(&name.node).is_some() {
-                            self.r.session.push_error(CompilerError::ResolverError(
-                                ResolverError::DuplicateDefinition {
-                                    src: self.r.session.get_named_source(),
-                                    span: name.span,
-                                    name: name.node.name.clone(),
-                                },
-                            ));
-                        }
+                    if !pattern_bindings.insert(name.node.clone()) && self.innermost_rib().get(&name.node).is_some() {
+                        self.r
+                            .session
+                            .push_error(CompilerError::ResolverError(ResolverError::DuplicateDefinition {
+                                src: self.r.session.get_named_source(),
+                                span: name.span,
+                                name: name.node.name.clone(),
+                            }));
                     }
 
-                    self.define_binding(&name, pattern);
+                    self.define_binding(name, pattern);
                     self.r.defs.insert_resolution(path.ast_id, Res::Local(pattern.ast_id));
                 } else {
                     self.resolve_path(path);
@@ -180,10 +180,10 @@ impl<'a, 'r> LateResolver<'a, 'r> {
     fn lookup_value(&self, ident: &Ident) -> Option<Res> {
         self.lookup_ribs(ident)
             .or_else(|| self.lookup_modules(ident, self.parent))
-            .or_else(|| self.lookup_prim_ty(ident))
+            .or_else(|| Self::lookup_prim_ty(ident))
     }
 
-    fn lookup_prim_ty(&self, ident: &Ident) -> Option<Res> {
+    fn lookup_prim_ty(ident: &Ident) -> Option<Res> {
         PrimTy::from_name(&ident.name).map(Res::PrimTy)
     }
 
@@ -320,7 +320,7 @@ impl<'a, 'r> LateResolver<'a, 'r> {
         self.r.defs.insert_ast_id(path.ast_id, def_id);
     }
 
-    fn resolve_first_segment(&mut self, segments: &[AstNode<PathSegment>]) -> Option<(ModuleId, usize)> {
+    fn resolve_first_segment(&self, segments: &[AstNode<PathSegment>]) -> Option<(ModuleId, usize)> {
         let first_ident = &segments[0].node.ident.node;
 
         match first_ident.name.as_str() {
@@ -393,7 +393,7 @@ impl<'a, 'r> LateResolver<'a, 'r> {
         }
     }
 
-    fn report_unresolved_path(&mut self, path: &AstNode<Path>) {
+    fn report_unresolved_path(&self, path: &AstNode<Path>) {
         let path_str = path
             .node
             .segments
@@ -412,7 +412,7 @@ impl<'a, 'r> LateResolver<'a, 'r> {
     }
 }
 
-impl<'a, 'r> Visitor for LateResolver<'a, 'r> {
+impl Visitor for LateResolver<'_, '_> {
     fn visit_item(&mut self, item: &AstNode<Item>) {
         let orig_module = self.parent;
         let orig_self_ty_info = self.self_ty_info;

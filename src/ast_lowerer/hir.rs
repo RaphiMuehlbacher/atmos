@@ -1,6 +1,5 @@
 use crate::extension::SourceSpanExt;
 use crate::parser::ast::{AstNode, Ident};
-use crate::resolver::ribs::Res;
 use crate::resolver::DefId;
 use crate::resolver::ribs::Res;
 use miette::SourceSpan;
@@ -28,7 +27,7 @@ impl<T> HirNode<T> {
     }
 
     pub fn err(node: T) -> Self {
-        HirNode::new(node, SourceSpan::err_span())
+        Self::new(node, SourceSpan::err_span())
     }
 
     pub fn fresh_hir_id() -> HirId {
@@ -42,7 +41,7 @@ impl<T> HirNode<T> {
 
 impl From<AstNode<Ident>> for HirNode<Ident> {
     fn from(value: AstNode<Ident>) -> Self {
-        HirNode::new(value.node, value.span)
+        Self::new(value.node, value.span)
     }
 }
 

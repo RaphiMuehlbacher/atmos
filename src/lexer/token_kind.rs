@@ -92,40 +92,41 @@ pub enum Kw {
 }
 
 impl TokenKind {
+    #[must_use]
     pub fn is_right_associative(&self) -> bool {
         matches!(
             self,
-            TokenKind::Punctuation(Punct::Eq)
-                | TokenKind::Punctuation(Punct::PlusEq)
-                | TokenKind::Punctuation(Punct::MinusEq)
-                | TokenKind::Punctuation(Punct::StarEq)
-                | TokenKind::Punctuation(Punct::SlashEq)
-                | TokenKind::Punctuation(Punct::PercentEq)
+            Self::Punctuation(
+                Punct::Eq | Punct::PlusEq | Punct::MinusEq | Punct::StarEq | Punct::SlashEq | Punct::PercentEq
+            )
         )
     }
 
+    #[must_use]
     pub fn is_infix_op(&self) -> bool {
         matches!(
             self,
-            TokenKind::Punctuation(Punct::Plus)
-                | TokenKind::Punctuation(Punct::Minus)
-                | TokenKind::Punctuation(Punct::Star)
-                | TokenKind::Punctuation(Punct::Slash)
-                | TokenKind::Punctuation(Punct::Percent)
-                | TokenKind::Punctuation(Punct::And)
-                | TokenKind::Punctuation(Punct::Or)
-                | TokenKind::Punctuation(Punct::Eq)
-                | TokenKind::Punctuation(Punct::PlusEq)
-                | TokenKind::Punctuation(Punct::MinusEq)
-                | TokenKind::Punctuation(Punct::StarEq)
-                | TokenKind::Punctuation(Punct::SlashEq)
-                | TokenKind::Punctuation(Punct::PercentEq)
-                | TokenKind::Punctuation(Punct::EqEq)
-                | TokenKind::Punctuation(Punct::NotEq)
-                | TokenKind::Punctuation(Punct::Less)
-                | TokenKind::Punctuation(Punct::LessEq)
-                | TokenKind::Punctuation(Punct::Greater)
-                | TokenKind::Punctuation(Punct::GreaterEq)
+            Self::Punctuation(
+                Punct::Plus
+                    | Punct::Minus
+                    | Punct::Star
+                    | Punct::Slash
+                    | Punct::Percent
+                    | Punct::And
+                    | Punct::Or
+                    | Punct::Eq
+                    | Punct::PlusEq
+                    | Punct::MinusEq
+                    | Punct::StarEq
+                    | Punct::SlashEq
+                    | Punct::PercentEq
+                    | Punct::EqEq
+                    | Punct::NotEq
+                    | Punct::Less
+                    | Punct::LessEq
+                    | Punct::Greater
+                    | Punct::GreaterEq
+            )
         )
     }
 }
@@ -133,17 +134,17 @@ impl TokenKind {
 impl Display for TokenKind {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
-            TokenKind::Ident(s) => write!(f, "{}", s),
-            TokenKind::Literal(lit) => write!(f, "{}", lit),
-            TokenKind::Punctuation(p) => write!(f, "{}", p),
-            TokenKind::OpeningDelimiter(d) => write!(f, "{}", d),
-            TokenKind::ClosingDelimiter(d) => match d {
+            Self::Ident(s) => write!(f, "{s}"),
+            Self::Literal(lit) => write!(f, "{lit}"),
+            Self::Punctuation(p) => write!(f, "{p}"),
+            Self::OpeningDelimiter(d) => write!(f, "{d}"),
+            Self::ClosingDelimiter(d) => match d {
                 Delimiter::Paren => write!(f, ")"),
                 Delimiter::Bracket => write!(f, "]"),
                 Delimiter::Brace => write!(f, "}}"),
             },
-            TokenKind::Keyword(k) => write!(f, "{}", k),
-            TokenKind::EOF => write!(f, "EOF"),
+            Self::Keyword(k) => write!(f, "{k}"),
+            Self::EOF => write!(f, "EOF"),
         }
     }
 }
@@ -151,15 +152,11 @@ impl Display for TokenKind {
 impl Display for Literal {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
-            Literal::Integer { value, suffix } => match suffix {
-                Some(s) => write!(f, "{}{}", value, s),
-                None => write!(f, "{}", value),
+            Self::Integer { value, suffix } | Self::Float { value, suffix } => match suffix {
+                Some(s) => write!(f, "{value}{s}"),
+                None => write!(f, "{value}"),
             },
-            Literal::Float { value, suffix } => match suffix {
-                Some(s) => write!(f, "{}{}", value, s),
-                None => write!(f, "{}", value),
-            },
-            Literal::Str(s) => write!(f, "\"{}\"", s),
+            Self::Str(s) => write!(f, "\"{s}\""),
         }
     }
 }
@@ -167,9 +164,9 @@ impl Display for Literal {
 impl Display for Delimiter {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
-            Delimiter::Paren => write!(f, "("),
-            Delimiter::Bracket => write!(f, "["),
-            Delimiter::Brace => write!(f, "{{"),
+            Self::Paren => write!(f, "("),
+            Self::Bracket => write!(f, "["),
+            Self::Brace => write!(f, "{{"),
         }
     }
 }
@@ -177,73 +174,73 @@ impl Display for Delimiter {
 impl Display for Punct {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         let s = match self {
-            Punct::Plus => "+",
-            Punct::Minus => "-",
-            Punct::Star => "*",
-            Punct::Slash => "/",
-            Punct::Percent => "%",
-            Punct::Ampersand => "&",
-            Punct::And => "&&",
-            Punct::PlusEq => "+=",
-            Punct::MinusEq => "-=",
-            Punct::StarEq => "*=",
-            Punct::SlashEq => "/=",
-            Punct::PercentEq => "%=",
-            Punct::Bang => "!",
-            Punct::Eq => "=",
-            Punct::EqEq => "==",
-            Punct::NotEq => "!=",
-            Punct::Less => "<",
-            Punct::LessEq => "<=",
-            Punct::Greater => ">",
-            Punct::GreaterEq => ">=",
-            Punct::Arrow => "->",
-            Punct::FatArrow => "=>",
-            Punct::Dot => ".",
-            Punct::Semicolon => ";",
-            Punct::Comma => ",",
-            Punct::Question => "?",
-            Punct::Colon => ":",
-            Punct::ColonColon => "::",
-            Punct::Underscore => "_",
-            Punct::Pipe => "|",
-            Punct::Or => "||",
+            Self::Plus => "+",
+            Self::Minus => "-",
+            Self::Star => "*",
+            Self::Slash => "/",
+            Self::Percent => "%",
+            Self::Ampersand => "&",
+            Self::And => "&&",
+            Self::PlusEq => "+=",
+            Self::MinusEq => "-=",
+            Self::StarEq => "*=",
+            Self::SlashEq => "/=",
+            Self::PercentEq => "%=",
+            Self::Bang => "!",
+            Self::Eq => "=",
+            Self::EqEq => "==",
+            Self::NotEq => "!=",
+            Self::Less => "<",
+            Self::LessEq => "<=",
+            Self::Greater => ">",
+            Self::GreaterEq => ">=",
+            Self::Arrow => "->",
+            Self::FatArrow => "=>",
+            Self::Dot => ".",
+            Self::Semicolon => ";",
+            Self::Comma => ",",
+            Self::Question => "?",
+            Self::Colon => ":",
+            Self::ColonColon => "::",
+            Self::Underscore => "_",
+            Self::Pipe => "|",
+            Self::Or => "||",
         };
-        write!(f, "{}", s)
+        write!(f, "{s}")
     }
 }
 
 impl Display for Kw {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         let s = match self {
-            Kw::Let => "let",
-            Kw::Fn => "fn",
-            Kw::Return => "return",
-            Kw::If => "if",
-            Kw::Else => "else",
-            Kw::While => "while",
-            Kw::Loop => "loop",
-            Kw::For => "for",
-            Kw::In => "in",
-            Kw::Break => "break",
-            Kw::Continue => "continue",
-            Kw::Struct => "struct",
-            Kw::Enum => "enum",
-            Kw::Trait => "trait",
-            Kw::Mod => "mod",
-            Kw::Match => "match",
-            Kw::Impl => "impl",
-            Kw::Pub => "pub",
-            Kw::Mut => "mut",
-            Kw::Type => "type",
-            Kw::As => "as",
-            Kw::True => "true",
-            Kw::False => "false",
-            Kw::Use => "use",
-            Kw::Where => "where",
-            Kw::Extern => "extern",
-            Kw::Const => "const",
+            Self::Let => "let",
+            Self::Fn => "fn",
+            Self::Return => "return",
+            Self::If => "if",
+            Self::Else => "else",
+            Self::While => "while",
+            Self::Loop => "loop",
+            Self::For => "for",
+            Self::In => "in",
+            Self::Break => "break",
+            Self::Continue => "continue",
+            Self::Struct => "struct",
+            Self::Enum => "enum",
+            Self::Trait => "trait",
+            Self::Mod => "mod",
+            Self::Match => "match",
+            Self::Impl => "impl",
+            Self::Pub => "pub",
+            Self::Mut => "mut",
+            Self::Type => "type",
+            Self::As => "as",
+            Self::True => "true",
+            Self::False => "false",
+            Self::Use => "use",
+            Self::Where => "where",
+            Self::Extern => "extern",
+            Self::Const => "const",
         };
-        write!(f, "{}", s)
+        write!(f, "{s}")
     }
 }

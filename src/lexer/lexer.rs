@@ -1,6 +1,6 @@
+use crate::Session;
 use crate::lexer::token_kind::{Delimiter, Kw, Literal, Punct};
 use crate::lexer::{LexerError, Token, TokenKind};
-use crate::Session;
 use miette::SourceSpan;
 
 pub struct Lexer<'sess> {
@@ -153,7 +153,7 @@ impl<'sess> Lexer<'sess> {
                     self.skip_whitespace();
                     continue;
                 }
-                c if self.is_ident_start(c) => self.lex_identifier(),
+                c if Self::is_ident_start(c) => self.lex_identifier(),
                 c => {
                     self.session.push_error(
                         LexerError::UnexpectedCharacter {
@@ -233,7 +233,7 @@ impl<'sess> Lexer<'sess> {
                     value.push(c);
                     self.advance();
                 }
-                '.' if !has_dot && self.peek_next().is_some_and(|c| c.is_numeric()) => {
+                '.' if !has_dot && self.peek_next().is_some_and(char::is_numeric) => {
                     has_dot = true;
                     value.push(c);
                     self.advance();
@@ -242,7 +242,7 @@ impl<'sess> Lexer<'sess> {
             }
         }
 
-        let suffix = self.peek().is_some_and(|c| self.is_ident_start(c)).then(|| {
+        let suffix = self.peek().is_some_and(Self::is_ident_start).then(|| {
             self.advance();
             self.collect_identifier_string()
         });
@@ -266,7 +266,7 @@ impl<'sess> Lexer<'sess> {
         }
 
         while let Some(c) = self.peek() {
-            if self.is_ident_continue(c) {
+            if Self::is_ident_continue(c) {
                 value.push(c);
                 self.advance();
             } else {
@@ -332,16 +332,16 @@ impl<'sess> Lexer<'sess> {
         false
     }
 
-    fn is_ident_start(&self, c: char) -> bool {
+    fn is_ident_start(c: char) -> bool {
         c.is_alphabetic() || c == '_'
     }
 
-    fn is_ident_continue(&self, c: char) -> bool {
+    fn is_ident_continue(c: char) -> bool {
         c.is_alphanumeric() || c == '_'
     }
 
     fn is_standalone_underscore(&self) -> bool {
-        !matches!(self.peek(), Some(next) if self.is_ident_continue(next))
+        !matches!(self.peek(), Some(next) if Self::is_ident_continue(next))
     }
 
     fn peek(&self) -> Option<char> {
@@ -350,7 +350,7 @@ impl<'sess> Lexer<'sess> {
 
     fn peek_next(&self) -> Option<char> {
         let src = self.session.get_source();
-        if self.position + 1 <= src.len() {
+        if self.position < src.len() {
             src[self.position + 1..].chars().next()
         } else {
             None

@@ -1,13 +1,15 @@
 use crate::error::CompilerError;
 use miette::Report;
 
+#[derive(Default)]
 pub struct ErrorHandler {
     errors: Vec<CompilerError>,
 }
 
 impl ErrorHandler {
+    #[must_use]
     pub fn new() -> Self {
-        Self { errors: vec![] }
+        Self::default()
     }
 
     pub fn push_error(&mut self, error: CompilerError) {
@@ -21,6 +23,7 @@ impl ErrorHandler {
         }
     }
 
+    #[must_use]
     pub fn error_count(&self) -> usize {
         self.errors.len()
     }

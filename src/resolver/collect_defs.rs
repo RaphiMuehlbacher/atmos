@@ -1,7 +1,7 @@
+use crate::Resolver;
 use crate::parser::ast::{AssociatedItem, AstNode, EnumVariant, FieldDef, GenericParam, Item};
 use crate::resolver::defs::DefKind;
 use crate::resolver::visitor;
-use crate::Resolver;
 
 pub struct DefCollector<'a, 'r> {
     resolver: &'a mut Resolver<'r>,
@@ -13,7 +13,7 @@ impl<'a, 'r> DefCollector<'a, 'r> {
     }
 }
 
-impl<'a, 'r> visitor::Visitor for DefCollector<'a, 'r> {
+impl visitor::Visitor for DefCollector<'_, '_> {
     fn visit_item(&mut self, item: &AstNode<Item>) {
         let def_kind = DefKind::from(&item.node);
         self.resolver.defs.insert(item.ast_id, def_kind);

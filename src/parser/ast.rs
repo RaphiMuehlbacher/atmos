@@ -26,7 +26,7 @@ impl<T> AstNode<T> {
     }
 
     pub fn err(node: T) -> Self {
-        AstNode::new(node, SourceSpan::err_span())
+        Self::new(node, SourceSpan::err_span())
     }
 
     pub fn fresh_ast_id() -> AstId {
@@ -468,17 +468,17 @@ pub enum BinOp {
 }
 
 impl Item {
+    #[must_use]
     pub fn ident(&self) -> Option<&AstNode<Ident>> {
         match self {
-            Item::Fn(FnDecl { sig, .. }) => Some(&sig.node.ident),
-            Item::Struct(StructDecl { ident, .. }) => Some(ident),
-            Item::Enum(EnumDecl { ident, .. }) => Some(ident),
-            Item::Trait(TraitDecl { ident, .. }) => Some(ident),
-            Item::Mod(ModDecl { ident, .. }) => Some(ident),
-            Item::ExternFn(ExternFnDecl { sig, .. }) => Some(&sig.node.ident),
-            Item::Const(ConstDecl { ident, .. }) => Some(ident),
-            Item::TyAlias(TyAlias { ident, .. }) => Some(ident),
-            Item::Impl(_) | Item::Use(_) => None,
+            Self::Fn(FnDecl { sig, .. }) | Self::ExternFn(ExternFnDecl { sig }) => Some(&sig.node.ident),
+            Self::Struct(StructDecl { ident, .. })
+            | Self::Enum(EnumDecl { ident, .. })
+            | Self::Trait(TraitDecl { ident, .. })
+            | Self::Mod(ModDecl { ident, .. })
+            | Self::Const(ConstDecl { ident, .. })
+            | Self::TyAlias(TyAlias { ident, .. }) => Some(ident),
+            Self::Impl(_) | Self::Use(_) => None,
         }
     }
 }
@@ -488,19 +488,19 @@ impl TryFrom<&Token> for BinOp {
 
     fn try_from(token: &Token) -> Result<Self, Self::Error> {
         match &token.kind {
-            TokenKind::Punctuation(Punct::Plus) => Ok(BinOp::Add),
-            TokenKind::Punctuation(Punct::Minus) => Ok(BinOp::Sub),
-            TokenKind::Punctuation(Punct::Star) => Ok(BinOp::Mul),
-            TokenKind::Punctuation(Punct::Slash) => Ok(BinOp::Div),
-            TokenKind::Punctuation(Punct::Percent) => Ok(BinOp::Rem),
-            TokenKind::Punctuation(Punct::And) => Ok(BinOp::And),
-            TokenKind::Punctuation(Punct::Or) => Ok(BinOp::Or),
-            TokenKind::Punctuation(Punct::EqEq) => Ok(BinOp::EqEq),
-            TokenKind::Punctuation(Punct::Less) => Ok(BinOp::Less),
-            TokenKind::Punctuation(Punct::LessEq) => Ok(BinOp::LessEq),
-            TokenKind::Punctuation(Punct::Greater) => Ok(BinOp::Greater),
-            TokenKind::Punctuation(Punct::GreaterEq) => Ok(BinOp::GreaterEq),
-            TokenKind::Punctuation(Punct::NotEq) => Ok(BinOp::NotEq),
+            TokenKind::Punctuation(Punct::Plus) => Ok(Self::Add),
+            TokenKind::Punctuation(Punct::Minus) => Ok(Self::Sub),
+            TokenKind::Punctuation(Punct::Star) => Ok(Self::Mul),
+            TokenKind::Punctuation(Punct::Slash) => Ok(Self::Div),
+            TokenKind::Punctuation(Punct::Percent) => Ok(Self::Rem),
+            TokenKind::Punctuation(Punct::And) => Ok(Self::And),
+            TokenKind::Punctuation(Punct::Or) => Ok(Self::Or),
+            TokenKind::Punctuation(Punct::EqEq) => Ok(Self::EqEq),
+            TokenKind::Punctuation(Punct::Less) => Ok(Self::Less),
+            TokenKind::Punctuation(Punct::LessEq) => Ok(Self::LessEq),
+            TokenKind::Punctuation(Punct::Greater) => Ok(Self::Greater),
+            TokenKind::Punctuation(Punct::GreaterEq) => Ok(Self::GreaterEq),
+            TokenKind::Punctuation(Punct::NotEq) => Ok(Self::NotEq),
             _ => Err(()),
         }
     }
@@ -518,9 +518,9 @@ impl TryFrom<&Token> for UnOp {
 
     fn try_from(token: &Token) -> Result<Self, Self::Error> {
         match &token.kind {
-            TokenKind::Punctuation(Punct::Star) => Ok(UnOp::Deref),
-            TokenKind::Punctuation(Punct::Bang) => Ok(UnOp::Not),
-            TokenKind::Punctuation(Punct::Minus) => Ok(UnOp::Neg),
+            TokenKind::Punctuation(Punct::Star) => Ok(Self::Deref),
+            TokenKind::Punctuation(Punct::Bang) => Ok(Self::Not),
+            TokenKind::Punctuation(Punct::Minus) => Ok(Self::Neg),
             _ => Err(()),
         }
     }

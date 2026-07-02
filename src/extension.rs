@@ -11,10 +11,10 @@ impl SourceSpanExt for SourceSpan {
         let end = other.offset() + other.len();
         assert!(end >= start);
 
-        SourceSpan::new(start.into(), end - start)
+        Self::new(start.into(), end - start)
     }
 
     fn err_span() -> SourceSpan {
-        SourceSpan::from(0)
+        Self::from(0)
     }
 }

@@ -9,6 +9,7 @@ pub struct Session {
 }
 
 impl Session {
+    #[must_use]
     pub fn new(source: NamedSource<String>) -> Self {
         Self {
             source,
@@ -16,16 +17,18 @@ impl Session {
         }
     }
 
+    #[must_use]
     pub fn get_source(&self) -> String {
         self.source.inner().clone()
     }
 
+    #[must_use]
     pub fn get_named_source(&self) -> NamedSource<String> {
         self.source.clone()
     }
 
     pub fn push_error(&self, error: CompilerError) {
-        self.error_handler.borrow_mut().push_error(error)
+        self.error_handler.borrow_mut().push_error(error);
     }
 
     pub fn emit_all(&self) {

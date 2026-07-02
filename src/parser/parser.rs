@@ -1,6 +1,9 @@
+use std::slice;
+
 use crate::Session;
 use crate::error::CompilerError;
 use crate::extension::SourceSpanExt;
+use crate::lexer::token_kind::Punct::{PercentEq, SlashEq};
 use crate::lexer::token_kind::{Delimiter, Kw, Literal, Punct};
 use crate::lexer::{Token, TokenKind};
 use crate::parser::ParserError;
@@ -28,7 +31,7 @@ pub struct Parser<'a> {
     restrictions: Restrictions,
 }
 
-impl<'a> Parser<'a> {
+impl Parser<'_> {
     fn current(&self) -> &Token {
         &self.tokens[self.position]
     }
@@ -82,7 +85,7 @@ impl<'a> Parser<'a> {
         false
     }
 
-    fn expect(&mut self, expected: &TokenKind) -> PResult<()> {
+    fn expect(&self, expected: &TokenKind) -> PResult<()> {
         if self.current_is(expected) {
             Ok(())
         } else {
@@ -91,7 +94,7 @@ impl<'a> Parser<'a> {
     }
 
     fn expect_consume(&mut self, expected: &TokenKind) -> PResult<()> {
-        if self.consume(&[expected.clone()]) {
+        if self.consume(slice::from_ref(expected)) {
             Ok(())
         } else {
             Err(self.unexpected_token(expected))
@@ -99,7 +102,7 @@ impl<'a> Parser<'a> {
     }
 
     fn expect_consume_emit(&mut self, expected: &TokenKind) {
-        if !self.consume(&[expected.clone()]) {
+        if !self.consume(slice::from_ref(expected)) {
             self.emit(self.unexpected_token(expected));
         }
     }
@@ -141,7 +144,7 @@ impl<'a> Parser<'a> {
     }
 }
 
-impl<'a> Parser<'a> {
+impl Parser<'_> {
     fn parse_separated_delimited<T, F>(
         &mut self,
         open: TokenKind,
@@ -170,7 +173,7 @@ impl<'a> Parser<'a> {
             self.emit(self.unexpected_token(&open));
             delimiter_err_emitted = true;
 
-            if self.is_junk_for_delim(&self.current().kind.clone()) {
+            if Self::is_junk_for_delim(&self.current().kind.clone()) {
                 self.advance();
             }
         }
@@ -183,16 +186,14 @@ impl<'a> Parser<'a> {
 
             match parse_element(self) {
                 Ok(element) => elements.push(element),
-                Err(err) => {
-                    match parse_element_err {
-                        Some(err) => {
-                            return Err(err);
-                        }
-                        None => {
-                            parse_element_err = Some(err);
-                        }
-                    };
-                }
+                Err(err) => match parse_element_err {
+                    Some(err) => {
+                        return Err(err);
+                    }
+                    None => {
+                        parse_element_err = Some(err);
+                    }
+                },
             }
         }
 
@@ -246,7 +247,7 @@ impl<'a> Parser<'a> {
             self.emit(self.unexpected_token(&open));
             delimiter_err_emitted = true;
 
-            if self.is_junk_for_delim(&self.current().kind.clone()) {
+            if Self::is_junk_for_delim(&self.current().kind.clone()) {
                 self.advance();
             }
         }
@@ -260,19 +261,17 @@ impl<'a> Parser<'a> {
 
             match parse_element(self) {
                 Ok(element) => elements.push(element),
-                Err(err) => {
-                    match parse_element_err {
-                        Some(err) => {
-                            return Err(err);
-                        }
-                        None => {
-                            parse_element_err = Some(err);
-                        }
-                    };
-                }
+                Err(err) => match parse_element_err {
+                    Some(err) => {
+                        return Err(err);
+                    }
+                    None => {
+                        parse_element_err = Some(err);
+                    }
+                },
             }
 
-            if self.consume(&[separator.clone()]) {
+            if self.consume(slice::from_ref(&separator)) {
                 trailing_comma = true;
                 if self.current_is(&close) {
                     break;
@@ -316,18 +315,19 @@ impl<'a> Parser<'a> {
         Ok((elements, trailing_comma))
     }
 
-    fn is_junk_for_delim(&self, token: &TokenKind) -> bool {
+    fn is_junk_for_delim(token: &TokenKind) -> bool {
         match token {
-            TokenKind::ClosingDelimiter(_) | TokenKind::OpeningDelimiter(_) => false,
-            TokenKind::Ident(_) | TokenKind::Literal(_) => false,
-            TokenKind::Keyword(_) => true,
-            TokenKind::Punctuation(_) => true,
-            _ => false,
+            TokenKind::ClosingDelimiter(_)
+            | TokenKind::OpeningDelimiter(_)
+            | TokenKind::Ident(_)
+            | TokenKind::Literal(_)
+            | TokenKind::EOF => false,
+            TokenKind::Keyword(_) | TokenKind::Punctuation(_) => true,
         }
     }
 
-    fn emit(&mut self, error: ParserError) {
-        self.session.push_error(CompilerError::ParserError(error))
+    fn emit(&self, error: ParserError) {
+        self.session.push_error(CompilerError::ParserError(error));
     }
 
     fn recover_item(&mut self) {
@@ -471,7 +471,7 @@ impl<'a> Parser<'a> {
         let items = self.parse_delimited(
             TokenKind::OpeningDelimiter(Delimiter::Brace),
             TokenKind::ClosingDelimiter(Delimiter::Brace),
-            |p| p.parse_associated_item(),
+            Self::parse_associated_item,
         )?;
         Ok(items)
     }
@@ -574,7 +574,7 @@ impl<'a> Parser<'a> {
         let items = self.parse_delimited(
             TokenKind::OpeningDelimiter(Delimiter::Brace),
             TokenKind::ClosingDelimiter(Delimiter::Brace),
-            |p| p.parse_item(),
+            Self::parse_item,
         )?;
 
         Ok(AstNode::new(
@@ -596,7 +596,7 @@ impl<'a> Parser<'a> {
             TokenKind::OpeningDelimiter(Delimiter::Brace),
             TokenKind::ClosingDelimiter(Delimiter::Brace),
             TokenKind::Punctuation(Punct::Comma),
-            |p| p.parse_enum_variant(),
+            Self::parse_enum_variant,
         )?;
 
         Ok(AstNode::new(
@@ -630,7 +630,7 @@ impl<'a> Parser<'a> {
                     TokenKind::OpeningDelimiter(Delimiter::Brace),
                     TokenKind::ClosingDelimiter(Delimiter::Brace),
                     TokenKind::Punctuation(Punct::Comma),
-                    |p| p.parse_struct_item_field(),
+                    Self::parse_struct_item_field,
                 )?;
                 VariantData::Struct { fields }
             }
@@ -639,7 +639,7 @@ impl<'a> Parser<'a> {
                     TokenKind::OpeningDelimiter(Delimiter::Paren),
                     TokenKind::ClosingDelimiter(Delimiter::Paren),
                     TokenKind::Punctuation(Punct::Comma),
-                    |p| p.parse_type(),
+                    Self::parse_type,
                 )?;
 
                 let fields = types
@@ -657,7 +657,6 @@ impl<'a> Parser<'a> {
                     .collect();
                 VariantData::Tuple { fields }
             }
-            TokenKind::Punctuation(Punct::Semicolon) => VariantData::Unit,
             _ => VariantData::Unit,
         };
         Ok(AstNode::new(variant, lo.to(self.previous().span)))
@@ -755,12 +754,12 @@ impl<'a> Parser<'a> {
     fn parse_params(&mut self) -> PResult<Vec<AstNode<Param>>> {
         self.expect(&TokenKind::OpeningDelimiter(Delimiter::Paren))?;
 
-        Ok(self.parse_separated_delimited(
+        self.parse_separated_delimited(
             TokenKind::OpeningDelimiter(Delimiter::Paren),
             TokenKind::ClosingDelimiter(Delimiter::Paren),
             TokenKind::Punctuation(Punct::Comma),
-            |p| p.parse_param(),
-        )?)
+            Self::parse_param,
+        )
     }
 
     /// starts at the identifier and ends after the type
@@ -823,7 +822,7 @@ impl<'a> Parser<'a> {
                     TokenKind::OpeningDelimiter(Delimiter::Paren),
                     TokenKind::ClosingDelimiter(Delimiter::Paren),
                     TokenKind::Punctuation(Punct::Comma),
-                    |p| p.parse_pattern(),
+                    Self::parse_pattern,
                 )?;
 
                 if elements.len() == 1 && !trailing_comma {
@@ -868,7 +867,7 @@ impl<'a> Parser<'a> {
                 TokenKind::OpeningDelimiter(Delimiter::Brace),
                 TokenKind::ClosingDelimiter(Delimiter::Brace),
                 TokenKind::Punctuation(Punct::Comma),
-                |p| p.parse_pattern_struct_field(),
+                Self::parse_pattern_struct_field,
             )?;
             Pattern::Struct(path, fields)
         } else if self.check(&[TokenKind::OpeningDelimiter(Delimiter::Paren)]) {
@@ -877,7 +876,7 @@ impl<'a> Parser<'a> {
                 TokenKind::OpeningDelimiter(Delimiter::Paren),
                 TokenKind::ClosingDelimiter(Delimiter::Paren),
                 TokenKind::Punctuation(Punct::Comma),
-                |p| p.parse_pattern(),
+                Self::parse_pattern,
             )?;
             Pattern::TupleStruct(path, patterns)
         } else {
@@ -904,12 +903,12 @@ impl<'a> Parser<'a> {
             return Ok(vec![]);
         }
 
-        Ok(self.parse_separated_delimited(
+        self.parse_separated_delimited(
             TokenKind::Punctuation(Punct::Less),
             TokenKind::Punctuation(Punct::Greater),
             TokenKind::Punctuation(Punct::Comma),
-            |p| p.parse_generic_param(),
-        )?)
+            Self::parse_generic_param,
+        )
     }
 
     fn parse_generic_param(&mut self) -> PResult<AstNode<GenericParam>> {
@@ -974,12 +973,12 @@ impl<'a> Parser<'a> {
             return Ok(vec![]);
         }
 
-        Ok(self.parse_separated_delimited(
+        self.parse_separated_delimited(
             TokenKind::Punctuation(Punct::Less),
             TokenKind::Punctuation(Punct::Greater),
             TokenKind::Punctuation(Punct::Comma),
-            |p| p.parse_generic_arg(),
-        )?)
+            Self::parse_generic_arg,
+        )
     }
 
     fn parse_generic_arg(&mut self) -> PResult<AstNode<GenericArg>> {
@@ -1005,7 +1004,7 @@ impl<'a> Parser<'a> {
                     TokenKind::OpeningDelimiter(Delimiter::Paren),
                     TokenKind::ClosingDelimiter(Delimiter::Paren),
                     TokenKind::Punctuation(Punct::Comma),
-                    |p| p.parse_type(),
+                    Self::parse_type,
                 )?;
 
                 let return_ty = self.parse_return_type()?;
@@ -1036,7 +1035,7 @@ impl<'a> Parser<'a> {
                     TokenKind::OpeningDelimiter(Delimiter::Paren),
                     TokenKind::ClosingDelimiter(Delimiter::Paren),
                     TokenKind::Punctuation(Punct::Comma),
-                    |p| p.parse_type(),
+                    Self::parse_type,
                 )?;
 
                 if elements.len() == 1 && !trailing_comma {
@@ -1063,7 +1062,7 @@ impl<'a> Parser<'a> {
                 self.advance();
                 Ok(AstNode::new(ident.clone().into(), lo.to(self.previous().span)))
             }
-            TokenKind::Literal(lit) if matches!(lit, Literal::Integer { .. } | Literal::Float { .. }) => {
+            TokenKind::Literal(Literal::Integer { .. } | Literal::Float { .. }) => {
                 self.advance();
 
                 let err = if matches!(self.current().kind, TokenKind::Ident(_)) {
@@ -1162,8 +1161,8 @@ impl<'a> Parser<'a> {
         Ok(AstNode::new(
             Stmt::Let(LetStmt {
                 pat,
-                expr,
                 type_annotation,
+                expr,
             }),
             lo.to(self.previous().span),
         ))
@@ -1188,7 +1187,7 @@ impl<'a> Parser<'a> {
                         TokenKind::OpeningDelimiter(Delimiter::Paren),
                         TokenKind::ClosingDelimiter(Delimiter::Paren),
                         TokenKind::Punctuation(Punct::Comma),
-                        |p| p.parse_expression(),
+                        Self::parse_expression,
                     )?;
 
                     lhs = AstNode::new(
@@ -1198,7 +1197,6 @@ impl<'a> Parser<'a> {
                         }),
                         lhs.span.to(self.previous().span),
                     );
-                    continue;
                 }
 
                 TokenKind::Punctuation(Punct::Dot) => {
@@ -1210,7 +1208,7 @@ impl<'a> Parser<'a> {
                             TokenKind::OpeningDelimiter(Delimiter::Paren),
                             TokenKind::ClosingDelimiter(Delimiter::Paren),
                             TokenKind::Punctuation(Punct::Comma),
-                            |p| p.parse_expression(),
+                            Self::parse_expression,
                         )?;
 
                         let name = AstNode::new(
@@ -1238,7 +1236,6 @@ impl<'a> Parser<'a> {
                             lhs.span.to(self.previous().span),
                         );
                     }
-                    continue;
                 }
 
                 TokenKind::OpeningDelimiter(Delimiter::Bracket) => {
@@ -1255,7 +1252,6 @@ impl<'a> Parser<'a> {
                         }),
                         lhs.span.to(self.previous().span),
                     );
-                    continue;
                 }
 
                 TokenKind::Keyword(Kw::As) => {
@@ -1268,7 +1264,6 @@ impl<'a> Parser<'a> {
                         }),
                         lhs.span.to(self.previous().span),
                     );
-                    continue;
                 }
 
                 _ if self.current().kind.is_infix_op() => {
@@ -1276,8 +1271,7 @@ impl<'a> Parser<'a> {
                     self.advance();
 
                     let rhs = self.parse_expr_with_precedence(right_bp)?;
-                    lhs = self.make_infix_expr(lhs, op_token, rhs)?;
-                    continue;
+                    lhs = self.make_infix_expr(lhs, &op_token, rhs)?;
                 }
 
                 _ => break,
@@ -1289,81 +1283,70 @@ impl<'a> Parser<'a> {
 
     fn current_precedence(&self) -> (u8, u8) {
         match &self.current().kind {
-            TokenKind::OpeningDelimiter(Delimiter::Paren)
-            | TokenKind::OpeningDelimiter(Delimiter::Bracket)
-            | TokenKind::Punctuation(Punct::Dot) => (100, 101),
+            TokenKind::OpeningDelimiter(Delimiter::Paren | Delimiter::Bracket) | TokenKind::Punctuation(Punct::Dot) => {
+                (100, 101)
+            }
 
             TokenKind::Keyword(Kw::As) => (12, 13),
 
-            TokenKind::Punctuation(Punct::Star)
-            | TokenKind::Punctuation(Punct::Slash)
-            | TokenKind::Punctuation(Punct::Percent) => (11, 12),
+            TokenKind::Punctuation(Punct::Star | Punct::Slash | Punct::Percent) => (11, 12),
 
-            TokenKind::Punctuation(Punct::Plus) | TokenKind::Punctuation(Punct::Minus) => (10, 11),
+            TokenKind::Punctuation(Punct::Plus | Punct::Minus) => (10, 11),
 
-            TokenKind::Punctuation(Punct::Less)
-            | TokenKind::Punctuation(Punct::LessEq)
-            | TokenKind::Punctuation(Punct::Greater)
-            | TokenKind::Punctuation(Punct::GreaterEq) => (5, 6),
+            TokenKind::Punctuation(Punct::Less | Punct::LessEq | Punct::Greater | Punct::GreaterEq) => (5, 6),
 
-            TokenKind::Punctuation(Punct::EqEq) | TokenKind::Punctuation(Punct::NotEq) => (4, 5),
+            TokenKind::Punctuation(Punct::EqEq | Punct::NotEq) => (4, 5),
 
             TokenKind::Punctuation(Punct::And) => (3, 4),
             TokenKind::Punctuation(Punct::Or) => (2, 3),
 
-            TokenKind::Punctuation(Punct::Eq)
-            | TokenKind::Punctuation(Punct::PlusEq)
-            | TokenKind::Punctuation(Punct::MinusEq)
-            | TokenKind::Punctuation(Punct::StarEq)
-            | TokenKind::Punctuation(Punct::SlashEq)
-            | TokenKind::Punctuation(Punct::PercentEq) => (1, 0),
+            TokenKind::Punctuation(
+                Punct::Eq | Punct::PlusEq | Punct::MinusEq | Punct::StarEq | SlashEq | PercentEq,
+            ) => (1, 0),
 
             _ => (0, 0),
         }
     }
 
-    fn make_infix_expr(&mut self, lhs: AstNode<Expr>, op: Token, rhs: AstNode<Expr>) -> PResult<AstNode<Expr>> {
-        use Punct::*;
-        use TokenKind::*;
-
+    fn make_infix_expr(&self, lhs: AstNode<Expr>, op: &Token, rhs: AstNode<Expr>) -> PResult<AstNode<Expr>> {
         let span = lhs.span.to(rhs.span);
 
         match op.kind {
-            Punctuation(Eq) => Ok(AstNode::new(
+            TokenKind::Punctuation(Punct::Eq) => Ok(AstNode::new(
                 Expr::Assign(AssignExpr {
                     target: Box::new(lhs),
                     value: Box::new(rhs),
                 }),
                 span,
             )),
-            Punctuation(Plus)
-            | Punctuation(Minus)
-            | Punctuation(Star)
-            | Punctuation(Slash)
-            | Punctuation(Percent)
-            | Punctuation(And)
-            | Punctuation(Or)
-            | Punctuation(EqEq)
-            | Punctuation(Less)
-            | Punctuation(LessEq)
-            | Punctuation(Greater)
-            | Punctuation(GreaterEq)
-            | Punctuation(NotEq) => Ok(AstNode::new(
+            TokenKind::Punctuation(
+                Punct::Plus
+                | Punct::Minus
+                | Punct::Star
+                | Punct::Slash
+                | Punct::Percent
+                | Punct::And
+                | Punct::Or
+                | Punct::EqEq
+                | Punct::Less
+                | Punct::LessEq
+                | Punct::Greater
+                | Punct::GreaterEq
+                | Punct::NotEq,
+            ) => Ok(AstNode::new(
                 Expr::Binary(BinaryExpr {
-                    operator: AstNode::new(BinOp::try_from(&op).unwrap(), op.span),
+                    operator: AstNode::new(BinOp::try_from(op).unwrap(), op.span),
                     left: Box::new(lhs),
                     right: Box::new(rhs),
                 }),
                 span,
             )),
-            Punctuation(PlusEq)
-            | Punctuation(MinusEq)
-            | Punctuation(StarEq)
-            | Punctuation(SlashEq)
-            | Punctuation(PercentEq) => Ok(AstNode::new(
+            TokenKind::Punctuation(
+                Punct::PlusEq | Punct::MinusEq | Punct::StarEq | Punct::SlashEq | Punct::PercentEq,
+            ) => Ok(AstNode::new(
                 Expr::AssignOp(AssignOpExpr {
                     target: Box::new(lhs),
-                    op: AstNode::new(AssignOp::try_from(&op).unwrap(), op.span),
+                    op: AstNode::new(AssignOp::try_from(op).unwrap(), op.span),
                     value: Box::new(rhs),
                 }),
                 span,
@@ -1426,7 +1409,7 @@ impl<'a> Parser<'a> {
                             Ok(parsed) => Expr::Literal(LiteralExpr::U32(parsed)),
                             Err(_) => {
                                 self.emit(self.literal_overflow(
-                                    format!("integer literal `{}` is too large for type `u32`", value),
+                                    format!("integer literal `{value}` is too large for type `u32`"),
                                     token_span,
                                 ));
                                 Expr::Literal(LiteralExpr::U32(0))
@@ -1436,7 +1419,7 @@ impl<'a> Parser<'a> {
                             Ok(parsed) => Expr::Literal(LiteralExpr::I32(parsed)),
                             Err(_) => {
                                 self.emit(self.literal_overflow(
-                                    format!("integer literal `{}` is too large for type `i32`", value),
+                                    format!("integer literal `{value}` is too large for type `i32`"),
                                     token_span,
                                 ));
                                 Expr::Literal(LiteralExpr::I32(0))
@@ -1458,7 +1441,7 @@ impl<'a> Parser<'a> {
                             Ok(parsed) => Expr::Literal(LiteralExpr::F64(parsed)),
                             Err(_) => {
                                 self.emit(self.literal_overflow(
-                                    format!("float literal `{}` is invalid for type `f64`", value),
+                                    format!("float literal `{value}` is invalid for type `f64`"),
                                     token_span,
                                 ));
                                 Expr::Literal(LiteralExpr::F64(0.0))
@@ -1493,7 +1476,7 @@ impl<'a> Parser<'a> {
                     TokenKind::OpeningDelimiter(Delimiter::Bracket),
                     TokenKind::ClosingDelimiter(Delimiter::Bracket),
                     TokenKind::Punctuation(Punct::Comma),
-                    |p| p.parse_expression(),
+                    Self::parse_expression,
                 )?;
                 Expr::Array(ArrayExpr { expressions: elems })
             }
@@ -1502,7 +1485,7 @@ impl<'a> Parser<'a> {
                     TokenKind::OpeningDelimiter(Delimiter::Paren),
                     TokenKind::ClosingDelimiter(Delimiter::Paren),
                     TokenKind::Punctuation(Punct::Comma),
-                    |p| p.parse_expression(),
+                    Self::parse_expression,
                 )?;
                 if elems.len() == 1 && !trailing_comma {
                     Expr::Paren(Box::new(elems[0].clone()))
@@ -1575,7 +1558,7 @@ impl<'a> Parser<'a> {
             Restrictions {
                 forbid_struct_expr: true,
             },
-            |p| p.parse_expression(),
+            Self::parse_expression,
         )?;
         let then_branch = self.parse_block()?;
 
@@ -1603,7 +1586,7 @@ impl<'a> Parser<'a> {
             Restrictions {
                 forbid_struct_expr: true,
             },
-            |p| p.parse_expression(),
+            Self::parse_expression,
         )?;
         let body = self.parse_block()?;
 
@@ -1640,7 +1623,7 @@ impl<'a> Parser<'a> {
             Restrictions {
                 forbid_struct_expr: true,
             },
-            |p| p.parse_expression(),
+            Self::parse_expression,
         )?;
         let body = self.parse_block()?;
 
@@ -1662,14 +1645,14 @@ impl<'a> Parser<'a> {
             Restrictions {
                 forbid_struct_expr: true,
             },
-            |p| p.parse_expression(),
+            Self::parse_expression,
         )?;
 
         let arms = self.parse_separated_delimited(
             TokenKind::OpeningDelimiter(Delimiter::Brace),
             TokenKind::ClosingDelimiter(Delimiter::Brace),
             TokenKind::Punctuation(Punct::Comma),
-            |p| p.parse_match_arm(),
+            Self::parse_match_arm,
         )?;
         Ok(AstNode::new(
             MatchExpr {
@@ -1734,7 +1717,7 @@ impl<'a> Parser<'a> {
             TokenKind::OpeningDelimiter(Delimiter::Brace),
             TokenKind::ClosingDelimiter(Delimiter::Brace),
             TokenKind::Punctuation(Punct::Comma),
-            |p| p.parse_struct_expr_field(),
+            Self::parse_struct_expr_field,
         )?;
 
         Ok(AstNode::new(

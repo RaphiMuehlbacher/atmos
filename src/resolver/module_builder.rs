@@ -1,7 +1,7 @@
+use crate::Resolver;
 use crate::parser::ast::{AssociatedItem, AstNode, BlockExpr, EnumVariant, GenericParam, Ident, Item};
 use crate::resolver::modules::{Binding, Import, ImportId, Module, ModuleId, ModuleKind};
 use crate::resolver::visitor;
-use crate::Resolver;
 
 #[derive(Debug, Clone)]
 pub struct ModuleArena {
@@ -11,6 +11,7 @@ pub struct ModuleArena {
 }
 
 impl ModuleArena {
+    #[must_use]
     pub fn new() -> Self {
         let mut modules = Vec::new();
         let root_module = Module::root();
@@ -24,14 +25,17 @@ impl ModuleArena {
         }
     }
 
+    #[must_use]
     pub fn root_id(&self) -> ModuleId {
         self.root_id
     }
 
+    #[must_use]
     pub fn get(&self, id: ModuleId) -> &Module {
         &self.modules[id.0]
     }
 
+    #[must_use]
     pub fn get_mut(&mut self, id: ModuleId) -> &mut Module {
         &mut self.modules[id.0]
     }
@@ -52,10 +56,12 @@ impl ModuleArena {
         id
     }
 
+    #[must_use]
     pub fn get_import(&self, id: ImportId) -> &Import {
         &self.imports[id.0]
     }
 
+    #[must_use]
     pub fn get_import_mut(&mut self, id: ImportId) -> &mut Import {
         &mut self.imports[id.0]
     }
@@ -72,7 +78,7 @@ impl<'a, 'r> ModuleBuilder<'a, 'r> {
     }
 }
 
-impl<'a, 'r> visitor::Visitor for ModuleBuilder<'a, 'r> {
+impl visitor::Visitor for ModuleBuilder<'_, '_> {
     fn visit_item(&mut self, item: &AstNode<Item>) {
         let parent = self.parent;
         let def_id = self.r.defs.get_def_from_ast(item.ast_id).unwrap();

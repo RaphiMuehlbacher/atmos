@@ -16,6 +16,7 @@ pub struct Module {
 }
 
 impl Module {
+    #[must_use]
     pub fn root() -> Self {
         Self {
             parent: None,
@@ -23,6 +24,8 @@ impl Module {
             kind: ModuleKind::Block,
         }
     }
+
+    #[must_use]
     pub fn new(parent: ModuleId, kind: ModuleKind) -> Self {
         Self {
             parent: Some(parent),
@@ -35,10 +38,12 @@ impl Module {
         self.items.insert(ident, binding);
     }
 
+    #[must_use]
     pub fn get(&self, ident: &Ident) -> Option<&Binding> {
         self.items.get(ident)
     }
 
+    #[must_use]
     pub fn parent(&self) -> Option<ModuleId> {
         self.parent
     }
@@ -65,6 +70,7 @@ pub struct Import {
 }
 
 impl Import {
+    #[must_use]
     pub fn new(path: Path, parent_module: ModuleId) -> Self {
         Self {
             path,

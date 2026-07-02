@@ -1,9 +1,9 @@
+use crate::Resolver;
 use crate::error::CompilerError;
 use crate::extension::SourceSpanExt;
 use crate::parser::ast::{AstNode, Ident, PathSegment};
-use crate::resolver::modules::{Binding, ImportId, ModuleId};
 use crate::resolver::ResolverError;
-use crate::Resolver;
+use crate::resolver::modules::{Binding, ImportId, ModuleId};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ImportResult {
@@ -34,10 +34,7 @@ impl<'a, 'r> ImportResolver<'a, 'r> {
                         made_progress = true;
                         self.finalize_import(import_id);
                     }
-                    ImportResult::Indeterminate => {
-                        still_unresolved.push(import_id);
-                    }
-                    ImportResult::Unresolved => {
+                    ImportResult::Indeterminate | ImportResult::Unresolved => {
                         still_unresolved.push(import_id);
                     }
                 }
