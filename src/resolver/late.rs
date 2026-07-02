@@ -4,9 +4,8 @@ use crate::resolver::defs::{DefKind, PartialRes};
 use crate::resolver::modules::{Binding, ModuleId, ModuleKind};
 use crate::resolver::ribs::{PrimTy, Res, Rib, RibKind, SelfTyInfo};
 use crate::resolver::visitor::Visitor;
-use crate::resolver::DefId;
-use crate::resolver::{visitor, ResolverError};
-use crate::{visit_opt, Resolver};
+use crate::resolver::{ResolverError, visitor};
+use crate::{Resolver, visit_opt};
 use std::collections::HashSet;
 
 #[derive(Copy, Clone, Debug, PartialEq)]

@@ -2,6 +2,7 @@ use crate::extension::SourceSpanExt;
 use crate::parser::ast::{AstNode, Ident};
 use crate::resolver::ribs::Res;
 use crate::resolver::DefId;
+use crate::resolver::ribs::Res;
 use miette::SourceSpan;
 
 #[derive(Copy, Debug, Clone, PartialEq, Eq, Hash)]

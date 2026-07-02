@@ -1,8 +1,8 @@
-struct A;
-
-fn test<A>(a: A) {
-    struct Bar;
+trait Test {
+    type A = i32;
 }
+
+fn a(b: Test::A) {}
 /*
 enum Option<T> {
     Some(T),
@@ -42,7 +42,6 @@ impl Iterator for Counter {
         }
     }
 }
-
 
 fn main() {
     let counter = Counter::new(10);

@@ -1,4 +1,5 @@
 pub mod checker;
+pub mod error;
 pub mod ty;
 pub mod type_collector;
 

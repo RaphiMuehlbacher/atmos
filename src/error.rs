@@ -1,6 +1,7 @@
 use crate::lexer::LexerError;
 use crate::parser::ParserError;
 use crate::resolver::ResolverError;
+use crate::type_checker::error::TypeCheckerError;
 use miette::Diagnostic;
 use thiserror::Error;
 
@@ -17,4 +18,8 @@ pub enum CompilerError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     ResolverError(#[from] ResolverError),
+
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    TypeCheckerError(#[from] TypeCheckerError),
 }
