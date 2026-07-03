@@ -417,14 +417,14 @@ impl<'a> Parser<'a> {
         let ident = self.parse_ident()?;
         let generics = self.parse_generic_params()?;
 
-        self.expect(&TokenKind::Punctuation(Punct::Colon))?;
+        self.expect_consume(&TokenKind::Punctuation(Punct::Colon))?;
         let type_annotation = self.parse_type()?;
 
-        self.expect(&TokenKind::Punctuation(Punct::Eq))?;
+        self.expect_consume(&TokenKind::Punctuation(Punct::Eq))?;
 
         let expr = self.parse_expression()?;
 
-        self.expect(&TokenKind::Punctuation(Punct::Semicolon))?;
+        self.expect_consume(&TokenKind::Punctuation(Punct::Semicolon))?;
 
         Ok(AstNode::new(
             Item::Const(ConstDecl {
