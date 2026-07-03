@@ -528,13 +528,22 @@ impl<'a> Parser<'a> {
         self.advance();
 
         let generics = self.parse_generic_params()?;
-        let self_ty = self.parse_type()?;
+        let first = self.parse_type()?;
 
-        let for_trait = if self.consume(&[TokenKind::Keyword(Kw::For)]) {
-            let path = self.parse_path()?;
-            Some(path)
+        let (for_trait, self_ty) = if self.consume(&[TokenKind::Keyword(Kw::For)]) {
+            let first_path = match first.node {
+                Ty::Path(path) => Some(path),
+                _ => {
+                    self.emit(ParserError::ExpectedTraitPath {
+                        src: self.session.get_named_source(),
+                        span: first.span,
+                    });
+                    None
+                }
+            };
+            (first_path, self.parse_type()?)
         } else {
-            None
+            (None, first)
         };
 
         let items = self.parse_associated_items()?;

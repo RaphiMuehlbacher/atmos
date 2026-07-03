@@ -163,4 +163,16 @@ pub enum ParserError {
         literal_type: String,
         valid_suffixes: String,
     },
+    #[error("Expected a trait path before `for`")]
+    #[diagnostic(
+        code(parser::expected_trait_path),
+        help("Use a named trait path, such as `Display` or `module::Display`")
+    )]
+    ExpectedTraitPath {
+        #[source_code]
+        src: NamedSource<String>,
+
+        #[label("this is not a valid trait path")]
+        span: SourceSpan,
+    },
 }

@@ -393,7 +393,9 @@ impl<'a, 'r> LateResolver<'a, 'r> {
         }
     }
 
-    fn report_unresolved_path(&self, path: &AstNode<Path>) {
+    fn report_unresolved_path(&mut self, path: &AstNode<Path>) {
+        self.r.defs.insert_resolution(path.ast_id, Res::Err);
+
         let path_str = path
             .node
             .segments
@@ -430,6 +432,7 @@ impl Visitor for LateResolver<'_, '_> {
                         .for_trait
                         .as_ref()
                         .and_then(|path| self.r.defs.get_def_from_ast(path.ast_id).copied());
+
                     self.self_ty_info = Some(SelfTyInfo {
                         self_ty_def,
                         trait_def,
