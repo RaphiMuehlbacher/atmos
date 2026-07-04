@@ -155,15 +155,6 @@ impl visitor::Visitor for ModuleBuilder<'_, '_> {
         visitor::walk_block(self, block);
     }
 
-    fn visit_generic_param(&mut self, generic_param: &AstNode<GenericParam>) {
-        let def_id = self.r.defs.get_def_from_ast(generic_param.ast_id).unwrap();
-        self.r.module_arena.define(
-            self.parent,
-            generic_param.node.ident.node.clone(),
-            Binding::Item(*def_id),
-        );
-    }
-
     fn visit_enum_variant(&mut self, enum_variant: &AstNode<EnumVariant>) {
         let def_id = self.r.defs.get_def_from_ast(enum_variant.ast_id).unwrap();
         self.r.module_arena.define(

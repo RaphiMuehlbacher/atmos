@@ -21,7 +21,7 @@ impl visitor::Visitor for DefCollector<'_, '_> {
     }
 
     fn visit_generic_param(&mut self, generic_param: &AstNode<GenericParam>) {
-        self.resolver.defs.insert(generic_param.ast_id, DefKind::TypeParam);
+        self.resolver.defs.insert(generic_param.ast_id, DefKind::GenericParam);
 
         visitor::walk_generic_param(self, generic_param);
     }

@@ -5,7 +5,7 @@ use crate::ast_lowerer::hir::{
 use crate::error::CompilerError;
 use crate::resolver::DefId;
 use crate::resolver::defs::DefKind;
-use crate::resolver::ribs::{PrimTy, Res};
+use crate::resolver::ribs::{PrimTy, Res, SelfTyInfo};
 use crate::type_checker::error::TypeCheckerError;
 use crate::type_checker::ty::{
     self, AssocItemDef, CollectedTypes, EnumDef, FnSig, GenericArg, GenericArgs, Generics, StructDef, Variant,
@@ -19,6 +19,7 @@ pub struct TypeCollector<'hir> {
 
     collected_types: CollectedTypes,
     collecting: HashMap<DefId, CollectState>,
+    item_def_id: Option<DefId>,
 }
 
 enum CollectState {
@@ -38,18 +39,23 @@ impl<'hir> TypeCollector<'hir> {
             def_to_hir,
             collected_types: CollectedTypes::new(),
             collecting: HashMap::new(),
+            item_def_id: None,
         }
     }
 
     pub fn collect_items(&mut self) -> CollectedTypes {
         for (def_id, hir_id) in self.def_to_hir {
+            self.item_def_id = Some(*def_id);
             let node = self.hir_nodes.get(hir_id).unwrap();
             self.collect_item_def(*def_id, node);
+            self.item_def_id = None;
         }
 
         for (def_id, hir_id) in self.def_to_hir {
+            self.item_def_id = Some(*def_id);
             let node = self.hir_nodes.get(hir_id).unwrap();
             self.collect_types(*def_id, node);
+            self.item_def_id = None;
         }
 
         self.collected_types.clone()
@@ -62,7 +68,7 @@ impl<'hir> TypeCollector<'hir> {
                     let generic_params = Generics::without_parent(&struct_decl.generics);
                     self.collected_types.generics_of.insert(def_id, generic_params);
 
-                    let generic_args = Self::lower_generic_params(&struct_decl.generics);
+                    let generic_args = self.lower_generic_params(&struct_decl.generics);
                     self.collected_types
                         .type_of
                         .insert(def_id, ty::Ty::Struct(def_id, generic_args));
@@ -71,7 +77,7 @@ impl<'hir> TypeCollector<'hir> {
                     let generic_params = Generics::without_parent(&enum_decl.generics);
                     self.collected_types.generics_of.insert(def_id, generic_params);
 
-                    let generic_args = Self::lower_generic_params(&enum_decl.generics);
+                    let generic_args = self.lower_generic_params(&enum_decl.generics);
                     self.collected_types
                         .type_of
                         .insert(def_id, ty::Ty::Enum(def_id, generic_args));
@@ -88,7 +94,7 @@ impl<'hir> TypeCollector<'hir> {
                     let generic_params = Generics::without_parent(&fn_decl.sig.node.generics);
                     self.collected_types.generics_of.insert(def_id, generic_params);
 
-                    let generic_args = Self::lower_generic_params(&fn_decl.sig.node.generics);
+                    let generic_args = self.lower_generic_params(&fn_decl.sig.node.generics);
                     self.collected_types
                         .type_of
                         .insert(def_id, ty::Ty::Fn(def_id, generic_args));
@@ -130,6 +136,10 @@ impl<'hir> TypeCollector<'hir> {
                     self.collected_types.enums.insert(def_id, EnumDef { def_id, variants });
                 }
                 Item::Trait(trait_decl) => {
+                    // TODO: insert into collected_types.traits?
+                    let generic_params = Generics::for_trait(def_id, &trait_decl.generics);
+                    self.collected_types.generics_of.insert(def_id, generic_params);
+
                     let assoc_items = self.collect_assoc_items(&trait_decl.items);
                     self.collected_types.assoc_items.insert(def_id, assoc_items);
                 }
@@ -167,11 +177,33 @@ impl<'hir> TypeCollector<'hir> {
     }
 
     fn collect_assoc_items(&mut self, assoc_items: &[HirNode<AssociatedItem>]) -> Vec<AssocItemDef> {
+        let orig_item_def_id = self.item_def_id;
+
         let mut items = vec![];
         for assoc in assoc_items {
+            self.item_def_id = Some(assoc.node.def_id);
+
             let params = match &assoc.node.kind {
+                AssociatedItemKind::Fn(sig, _) => &sig.node.generics.as_slice(),
+                AssociatedItemKind::Type(ty_alias) => &ty_alias.node.generics.as_slice(),
+            };
+
+            let parent_generics = self
+                .collected_types
+                .generics_of
+                .get(&orig_item_def_id.unwrap())
+                .unwrap();
+
+            assert_eq!(parent_generics.parent, None);
+
+            let generic_params = Generics::with_parent(assoc.node.parent, params, parent_generics.params.len());
+            self.collected_types
+                .generics_of
+                .insert(assoc.node.def_id, generic_params);
+
+            match &assoc.node.kind {
                 AssociatedItemKind::Fn(sig, _) => {
-                    let generic_args = Self::lower_generic_params(&sig.node.generics);
+                    let generic_args = self.lower_generic_params(&sig.node.generics);
                     self.collected_types
                         .type_of
                         .insert(assoc.node.def_id, ty::Ty::Fn(assoc.node.def_id, generic_args));
@@ -192,8 +224,6 @@ impl<'hir> TypeCollector<'hir> {
                     self.collected_types
                         .fn_sig
                         .insert(assoc.node.def_id, FnSig { params, return_ty });
-
-                    sig.node.generics.as_slice()
                 }
                 AssociatedItemKind::Type(ty_alias) => {
                     if let Some(ty) = &ty_alias.node.ty {
@@ -203,29 +233,32 @@ impl<'hir> TypeCollector<'hir> {
                             .insert(ty_alias.node.def_id, self.lower_ty(ty));
                         self.collecting.insert(ty_alias.node.def_id, CollectState::Done);
                     }
-
-                    ty_alias.node.generics.as_slice()
                 }
             };
-
-            let generic_params = Generics::with_parent(assoc.node.parent, params);
-            self.collected_types
-                .generics_of
-                .insert(assoc.node.def_id, generic_params);
 
             items.push(AssocItemDef {
                 def_id: assoc.node.def_id,
             });
         }
+        self.item_def_id = orig_item_def_id;
         items
     }
 
-    fn lower_generic_params(generic_params: &[HirNode<hir::GenericParam>]) -> GenericArgs {
+    fn lower_generic_params(&self, generic_params: &[HirNode<hir::GenericParam>]) -> GenericArgs {
         generic_params
             .iter()
             .map(|arg| match &arg.node.kind {
                 GenericParamKind::Const(_) => todo!(),
-                GenericParamKind::Type => GenericArg::Type(ty::Ty::GenericParam(arg.node.def_id)),
+                GenericParamKind::Type => {
+                    let index = self
+                        .collected_types
+                        .generics_of
+                        .get(&self.item_def_id.unwrap())
+                        .unwrap()
+                        .get_index(arg.node.def_id, &self.collected_types.generics_of);
+
+                    GenericArg::Type(ty::Ty::GenericParam(index))
+                }
             })
             .collect()
     }
@@ -274,7 +307,17 @@ impl<'hir> TypeCollector<'hir> {
                                 self.lower_ty(&ty_alias.ty)
                             }
                         },
-                        DefKind::TypeParam => ty::Ty::GenericParam(*def_id),
+                        DefKind::GenericParam => {
+                            // dbg!(def_id, &self.collected_types.generics_of);
+                            let index = self
+                                .collected_types
+                                .generics_of
+                                .get(&self.item_def_id.unwrap())
+                                .unwrap()
+                                .get_index(*def_id, &self.collected_types.generics_of);
+
+                            ty::Ty::GenericParam(index)
+                        }
                         DefKind::StructField
                         | DefKind::EnumVariant
                         | DefKind::Trait
@@ -291,12 +334,16 @@ impl<'hir> TypeCollector<'hir> {
                         PrimTy::Bool => ty::Ty::Bool,
                         PrimTy::Str => ty::Ty::Str,
                     },
-                    // Res::SelfTy(SelfTyInfo {self_ty_def, ..}) => {
-                    Res::SelfTy(self_ty_info) => {
-                        // TODO: unwrap or something
-                        dbg!(self_ty_info);
-                        // self.collected_types.type_of.get(self_ty_def);
-                        todo!()
+                    Res::SelfTy(SelfTyInfo {
+                        self_ty_def, trait_def, ..
+                    }) => {
+                        if let Some(def_id) = self_ty_def {
+                            self.collected_types.type_of.get(def_id).unwrap().clone()
+                        } else if trait_def.is_some() {
+                            ty::Ty::GenericParam(0)
+                        } else {
+                            unreachable!()
+                        }
                     }
                     Res::Err => ty::Ty::Err,
                 },

@@ -49,7 +49,7 @@ pub enum Res {
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct Rib {
-    symbols: HashMap<Ident, AstId>,
+    symbols: HashMap<Ident, Res>,
     kind: RibKind,
 }
 
@@ -72,13 +72,13 @@ impl Rib {
         Self::new(RibKind::Item)
     }
 
-    pub fn insert(&mut self, name: Ident, def_id: AstId) {
-        self.symbols.insert(name, def_id);
+    pub fn insert(&mut self, name: Ident, res: Res) {
+        self.symbols.insert(name, res);
     }
 
     #[must_use]
-    pub fn get(&self, name: &Ident) -> Option<AstId> {
-        self.symbols.get(name).copied()
+    pub fn get(&self, name: &Ident) -> Option<Res> {
+        self.symbols.get(name).cloned()
     }
 }
 

@@ -80,7 +80,7 @@ pub enum DefKind {
     ExternFn,
     Use,
     Const,
-    TypeParam,
+    GenericParam,
     TypeAlias,
     AssocTypeAlias,
 }

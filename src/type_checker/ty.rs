@@ -47,7 +47,7 @@ pub enum Ty {
     Fn(DefId, GenericArgs),
     Struct(DefId, GenericArgs),
     Enum(DefId, GenericArgs),
-    GenericParam(DefId),
+    GenericParam(usize),
     TyVar(TyVarId),
     Err,
 }
@@ -105,22 +105,58 @@ pub struct AssocItemDef {
 #[derive(Debug, Clone)]
 pub struct Generics {
     pub parent: Option<DefId>,
-    pub params: Vec<DefId>,
+    pub params: Vec<GenericParamDef>,
+}
+
+#[derive(Debug, Clone)]
+pub struct GenericParamDef {
+    pub def_id: DefId,
+    pub index: usize,
 }
 
 impl Generics {
-    pub fn new(parent: Option<DefId>, params: &[HirNode<GenericParam>]) -> Self {
-        Self {
-            parent,
-            params: params.iter().map(|param| param.node.def_id).collect(),
-        }
+    pub fn new(parent: Option<DefId>, params: &[HirNode<GenericParam>], index_start: usize) -> Self {
+        let params = params
+            .iter()
+            .enumerate()
+            .map(|(i, param)| GenericParamDef {
+                def_id: param.node.def_id,
+                index: index_start + i,
+            })
+            .collect();
+
+        Self { parent, params }
     }
-    pub fn with_parent(parent: DefId, params: &[HirNode<GenericParam>]) -> Self {
-        Self::new(Some(parent), params)
+
+    pub fn with_parent(parent: DefId, params: &[HirNode<GenericParam>], index_start: usize) -> Self {
+        Self::new(Some(parent), params, index_start)
     }
 
     pub fn without_parent(params: &[HirNode<GenericParam>]) -> Self {
-        Self::new(None, params)
+        Self::new(None, params, 0)
+    }
+
+    pub fn for_trait(trait_def_id: DefId, params: &[HirNode<GenericParam>]) -> Self {
+        let mut generics = Self::new(None, params, 1);
+        generics.params.insert(
+            0,
+            GenericParamDef {
+                def_id: trait_def_id,
+                index: 0,
+            },
+        );
+        generics
+    }
+
+    pub fn get_index(&self, def_id: DefId, generics_of: &HashMap<DefId, Generics>) -> usize {
+        let param = self.params.iter().find(|param| param.def_id == def_id);
+        match param {
+            Some(param) => param.index,
+            None if let Some(parent_def_id) = self.parent => {
+                Generics::get_index(generics_of.get(&parent_def_id).unwrap(), def_id, &generics_of)
+            }
+            None => panic!(),
+        }
     }
 }
 

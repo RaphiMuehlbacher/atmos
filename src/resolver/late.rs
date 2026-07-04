@@ -1,5 +1,7 @@
 use crate::error::CompilerError;
-use crate::parser::ast::{AstNode, BlockExpr, Expr, GenericArg, Ident, Item, LetStmt, Path, PathSegment, Pattern, Ty};
+use crate::parser::ast::{
+    AstNode, BlockExpr, Expr, GenericArg, GenericParam, Ident, Item, LetStmt, Path, PathSegment, Pattern, Ty,
+};
 use crate::resolver::DefId;
 use crate::resolver::defs::{DefKind, PartialRes};
 use crate::resolver::modules::{Binding, ModuleId, ModuleKind};
@@ -125,7 +127,7 @@ impl<'a, 'r> LateResolver<'a, 'r> {
                             }));
                     }
 
-                    self.define_binding(name, pattern);
+                    self.define_local_binding(name, pattern);
                     self.r.defs.insert_resolution(path.ast_id, Res::Local(pattern.ast_id));
                 } else {
                     self.resolve_path(path);
@@ -155,12 +157,7 @@ impl<'a, 'r> LateResolver<'a, 'r> {
     }
 
     fn lookup_ribs(&self, ident: &Ident) -> Option<Res> {
-        for rib in self.ribs.iter().rev() {
-            if let Some(ast_id) = rib.get(ident) {
-                return Some(Res::Local(ast_id));
-            }
-        }
-        None
+        self.ribs.iter().rev().find_map(|rib| rib.get(ident))
     }
 
     fn lookup_modules(&self, ident: &Ident, module_id: ModuleId) -> Option<Res> {
@@ -187,8 +184,9 @@ impl<'a, 'r> LateResolver<'a, 'r> {
         PrimTy::from_name(&ident.name).map(Res::PrimTy)
     }
 
-    fn define_binding(&mut self, ident: &AstNode<Ident>, pattern: &AstNode<Pattern>) {
-        self.innermost_rib().insert(ident.node.clone(), pattern.ast_id);
+    fn define_local_binding(&mut self, ident: &AstNode<Ident>, pattern: &AstNode<Pattern>) {
+        self.innermost_rib()
+            .insert(ident.node.clone(), Res::Local(pattern.ast_id));
     }
 
     fn get_def_from_ty(&self, ty: &AstNode<Ty>) -> Option<DefId> {
@@ -256,7 +254,11 @@ impl<'a, 'r> LateResolver<'a, 'r> {
                     if !is_last
                         && matches!(
                             def_kind,
-                            DefKind::TypeParam | DefKind::Struct | DefKind::Enum | DefKind::TypeAlias | DefKind::Trait
+                            DefKind::GenericParam
+                                | DefKind::Struct
+                                | DefKind::Enum
+                                | DefKind::TypeAlias
+                                | DefKind::Trait
                         )
                     {
                         let partial_res = PartialRes::new(Res::Def(def_id, def_kind), segments.len() - 1 - i);
@@ -282,7 +284,7 @@ impl<'a, 'r> LateResolver<'a, 'r> {
                             if !is_last
                                 && matches!(
                                     self.r.defs.get_definition(*def_id).unwrap().kind,
-                                    DefKind::TypeParam
+                                    DefKind::GenericParam
                                         | DefKind::Struct
                                         | DefKind::Enum
                                         | DefKind::TypeAlias
@@ -513,6 +515,14 @@ impl Visitor for LateResolver<'_, '_> {
         }
 
         self.resolve_path(path);
+    }
+
+    fn visit_generic_param(&mut self, generic_param: &AstNode<GenericParam>) {
+        let def_id = self.r.defs.get_def_from_ast(generic_param.ast_id).unwrap().clone();
+        self.innermost_rib().insert(
+            generic_param.node.ident.node.clone(),
+            Res::Def(def_id, DefKind::GenericParam),
+        );
     }
 
     fn visit_expr(&mut self, expr: &AstNode<Expr>) {
