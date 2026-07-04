@@ -108,6 +108,7 @@ pub struct PatternStructField {
 
 #[derive(Debug, Clone)]
 pub struct AssociatedItem {
+    pub def_id: DefId,
     pub parent: DefId,
     pub kind: AssociatedItemKind,
 }
@@ -202,7 +203,6 @@ pub struct EnumVariant {
     pub def_id: DefId,
     pub ident: HirNode<Ident>,
     pub data: HirNode<VariantData>,
-    pub owner: DefId,
 }
 
 #[derive(Debug, Clone)]

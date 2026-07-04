@@ -30,6 +30,7 @@ impl PrimTy {
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct SelfTyInfo {
     /// The `DefId` of the type that Self refers to (struct, enum, or type alias in impl/trait)
+    /// `None` when in trait definition
     pub self_ty_def: Option<DefId>,
     /// If inside a trait impl, the `DefId` of the trait being implemented
     pub trait_def: Option<DefId>,

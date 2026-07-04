@@ -1,5 +1,7 @@
-trait Test {
-    type A = i32;
+struct Person;
+
+impl Person {
+    fn a(a: Self) ->  Self {}
 }
 
 fn a(b: Test::A) {}

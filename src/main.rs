@@ -1,4 +1,4 @@
-use atmos::{compile_source, Session};
+use atmos::{Session, compile_source};
 use miette::{GraphicalReportHandler, NamedSource};
 use std::fs;
 
