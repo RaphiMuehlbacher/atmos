@@ -493,20 +493,28 @@ impl Visitor for LateResolver<'_, '_> {
         let first_segment = &path.node.segments[0];
         if first_segment.node.ident.node.name == "Self" {
             match self.self_ty_info {
-                Some(self_ty_info) => self.r.defs.insert_resolution(path.ast_id, Res::SelfTy(self_ty_info)),
-                None => self
-                    .r
-                    .session
-                    .push_error(CompilerError::ResolverError(ResolverError::SelfOutsideImpl {
-                        src: self.r.session.get_named_source(),
-                        span: first_segment.span,
-                    })),
+                Some(self_ty_info) => {
+                    if path.node.segments.len() == 1 {
+                        self.r.defs.insert_resolution(path.ast_id, Res::SelfTy(self_ty_info));
+                    } else {
+                        self.r.defs.partial_res.insert(
+                            path.ast_id,
+                            PartialRes::new(Res::SelfTy(self.self_ty_info.unwrap()), path.node.segments.len() - 1),
+                        );
+                    }
+                }
+                None => {
+                    self.r.defs.insert_resolution(path.ast_id, Res::Err);
+                    self.r
+                        .session
+                        .push_error(CompilerError::ResolverError(ResolverError::SelfOutsideImpl {
+                            src: self.r.session.get_named_source(),
+                            span: first_segment.span,
+                        }));
+                }
             }
 
-            for arg in &first_segment.node.args {
-                visitor::walk_generic_arg(self, arg);
-            }
-            for segment in path.node.segments.iter().skip(1) {
+            for segment in &path.node.segments {
                 for arg in &segment.node.args {
                     visitor::walk_generic_arg(self, arg);
                 }

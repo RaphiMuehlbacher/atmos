@@ -1,3 +1,11 @@
+struct Person;
+
+impl Person {
+    type A = i32;
+}
+
+fn test(a: Person::A) {}
+
 /*
 enum Option<T> {
     Some(T),
