@@ -1,3 +1,20 @@
+struct Person<T>;
+
+
+impl Person<i32> {
+    type A = i32;
+}
+
+fn test(a: Person<i32>::B) -> i32 { a }
+
+impl Person<u32> {
+    type B = u32;
+}
+
+
+
+
+/*
 struct Person;
 
 impl Person {
@@ -5,7 +22,7 @@ impl Person {
 }
 
 fn test(a: Person::A) {}
-
+*/
 /*
 enum Option<T> {
     Some(T),

@@ -147,12 +147,22 @@ impl<'hir> TypeCollector<'hir> {
                     let generic_params = Generics::without_parent(&impl_decl.generics);
                     self.collected_types.generics_of.insert(def_id, generic_params);
 
-                    self.collected_types
-                        .type_of
-                        .insert(def_id, self.lower_ty(&impl_decl.self_ty));
+                    let self_ty = self.lower_ty(&impl_decl.self_ty);
+                    self.collected_types.type_of.insert(def_id, self_ty.clone());
 
                     let assoc_items = self.collect_assoc_items(&impl_decl.items);
                     self.collected_types.assoc_items.insert(def_id, assoc_items);
+
+                    let self_ty_def_id = match self_ty {
+                        ty::Ty::Struct(def_id, _) | ty::Ty::Enum(def_id, _) => def_id,
+                        _ => panic!(),
+                    };
+
+                    self.collected_types
+                        .impls_of
+                        .entry(self_ty_def_id)
+                        .or_default()
+                        .push(impl_decl.def_id);
                 }
                 Item::Const(const_decl) => {
                     let generic_params = Generics::without_parent(&const_decl.generics);
@@ -201,7 +211,7 @@ impl<'hir> TypeCollector<'hir> {
                 .generics_of
                 .insert(assoc.node.def_id, generic_params);
 
-            match &assoc.node.kind {
+            let ident = match &assoc.node.kind {
                 AssociatedItemKind::Fn(sig, _) => {
                     let generic_args = self.lower_generic_params(&sig.node.generics);
                     self.collected_types
@@ -224,6 +234,8 @@ impl<'hir> TypeCollector<'hir> {
                     self.collected_types
                         .fn_sig
                         .insert(assoc.node.def_id, FnSig { params, return_ty });
+
+                    sig.node.ident.node.clone()
                 }
                 AssociatedItemKind::Type(ty_alias) => {
                     if let Some(ty) = &ty_alias.node.ty {
@@ -233,11 +245,13 @@ impl<'hir> TypeCollector<'hir> {
                             .insert(ty_alias.node.def_id, self.lower_ty(ty));
                         self.collecting.insert(ty_alias.node.def_id, CollectState::Done);
                     }
+                    ty_alias.node.ident.node.clone()
                 }
             };
 
             items.push(AssocItemDef {
                 def_id: assoc.node.def_id,
+                ident,
             });
         }
         self.item_def_id = orig_item_def_id;
@@ -351,7 +365,31 @@ impl<'hir> TypeCollector<'hir> {
                     res,
                     resolved_segments,
                     unresolved_segments,
-                } => todo!(),
+                } => match res {
+                    Res::Def(def_id, def_kind) => {
+                        assert_eq!(
+                            unresolved_segments.len(),
+                            1,
+                            "currently only 1 associated item should be possible"
+                        );
+                        let path = unresolved_segments.first().unwrap().node.clone();
+                        ty::Ty::InherentTyAlias {
+                            adt_def_id: *def_id,
+                            ident: path.ident.node,
+                            resolved_args: resolved_segments
+                                .last()
+                                .unwrap()
+                                .node
+                                .args
+                                .iter()
+                                .map(|arg| arg.node.clone())
+                                .collect(),
+                            unresolved_args: path.args.iter().map(|arg| arg.node.clone()).collect(),
+                        }
+                    }
+                    Res::SelfTy(self_ty_info) => todo!(),
+                    _ => todo!(),
+                },
             },
             hir::Ty::Array(elem_ty, _) => {
                 // TODO: Handle const expressions in array types

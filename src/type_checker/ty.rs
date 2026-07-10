@@ -1,4 +1,5 @@
-use crate::ast_lowerer::hir::{Expr, GenericParam, HirNode};
+use crate::ast_lowerer::hir::{self, Expr, GenericParam, HirNode};
+use crate::parser::ast::Ident;
 use crate::resolver::DefId;
 use std::collections::HashMap;
 
@@ -47,6 +48,13 @@ pub enum Ty {
     Fn(DefId, GenericArgs),
     Struct(DefId, GenericArgs),
     Enum(DefId, GenericArgs),
+    /// `DefId` of Adt
+    InherentTyAlias {
+        adt_def_id: DefId,
+        ident: Ident,
+        resolved_args: Vec<hir::GenericArg>,
+        unresolved_args: Vec<hir::GenericArg>,
+    },
     GenericParam(usize),
     TyVar(TyVarId),
     Err,
@@ -91,6 +99,7 @@ pub struct PredicateDef {
 #[derive(Debug, Clone)]
 pub struct AssocItemDef {
     pub def_id: DefId,
+    pub ident: Ident,
     // TODO: maybe needed or changed
     // pub parent: AssocParent,
 }
@@ -169,6 +178,7 @@ pub struct CollectedTypes {
     pub traits: HashMap<DefId, TraitDef>,
     /// `DefId` of Generic Param
     pub predicates_of: HashMap<DefId, PredicateDef>,
+    pub impls_of: HashMap<DefId, Vec<DefId>>,
     /// `DefId` of Impl or Trait
     pub assoc_items: HashMap<DefId, Vec<AssocItemDef>>,
     pub generics_of: HashMap<DefId, Generics>,
