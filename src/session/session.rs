@@ -51,6 +51,7 @@ pub struct Output {
     pub hir: Option<hir::Crate>,
     pub ast_to_def: HashMap<ast::AstId, DefId>,
     pub resolutions: HashMap<ast::AstId, ribs::Res>,
+    pub def_map: HashMap<DefId, crate::resolver::defs::DefKind>,
 }
 
 #[derive(Clone, Copy, ValueEnum, Hash, PartialEq, Eq)]

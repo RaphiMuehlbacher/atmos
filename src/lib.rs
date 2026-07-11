@@ -43,6 +43,11 @@ pub fn compile_source(session: &Session) -> Output {
 
     output.ast_to_def = defs.ast_to_def.clone();
     output.resolutions = defs.resolutions.clone();
+    output.def_map = defs
+        .definitions
+        .iter()
+        .map(|(id, def)| (*id, def.kind))
+        .collect();
 
     let mut ast_lowerer = AstLowerer::new(defs, &ast);
     let (hir, hir_nodes, def_to_hir) = ast_lowerer.lower();

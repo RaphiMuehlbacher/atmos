@@ -66,6 +66,7 @@ pub struct PublicOutput {
     pub hir: Option<HirCrate>,
     pub ast_to_def: HashMap<AstId, DefId>,
     pub resolutions: HashMap<AstId, Res>,
+    pub def_map: HashMap<DefId, DefKind>,
 }
 
 impl From<Output> for PublicOutput {
@@ -96,6 +97,11 @@ impl From<Output> for PublicOutput {
                 .resolutions
                 .iter()
                 .map(|(k, v)| (AstId(k.0), convert_res(v)))
+                .collect(),
+            def_map: output
+                .def_map
+                .iter()
+                .map(|(k, v)| (DefId(k.0), convert_def_kind(v)))
                 .collect(),
         }
     }
