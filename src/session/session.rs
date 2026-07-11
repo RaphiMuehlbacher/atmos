@@ -2,8 +2,10 @@ use crate::ast_lowerer::hir;
 use crate::error::CompilerError;
 use crate::lexer;
 use crate::parser::ast;
-use crate::resolver::{DefId, ribs};
+use crate::resolver::defs;
+use crate::resolver::ribs;
 use crate::session::ErrorHandler;
+use crate::type_checker::ty;
 use clap::ValueEnum;
 use miette::NamedSource;
 use std::cell::RefCell;
@@ -49,9 +51,10 @@ pub struct Output {
     pub tokens: Option<Vec<lexer::Token>>,
     pub ast: Option<ast::Crate>,
     pub hir: Option<hir::Crate>,
-    pub ast_to_def: HashMap<ast::AstId, DefId>,
+    pub ast_to_def: HashMap<ast::AstId, defs::DefId>,
     pub resolutions: HashMap<ast::AstId, ribs::Res>,
-    pub def_map: HashMap<DefId, crate::resolver::defs::DefKind>,
+    pub def_map: HashMap<defs::DefId, defs::DefKind>,
+    pub collected_types: ty::CollectedTypes,
 }
 
 #[derive(Clone, Copy, ValueEnum, Hash, PartialEq, Eq)]
@@ -59,4 +62,5 @@ pub enum OutputType {
     Tokens,
     Ast,
     Hir,
+    Types,
 }

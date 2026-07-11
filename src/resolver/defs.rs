@@ -1,9 +1,11 @@
 use crate::parser::AstId;
 use crate::parser::ast::Item;
 use crate::resolver::ribs::Res;
+use serde::Serialize;
 use std::collections::HashMap;
 
-#[derive(Copy, Debug, Clone, PartialEq, Eq, Hash, Default)]
+#[derive(Copy, Debug, Clone, PartialEq, Eq, Hash, Default, Serialize)]
+#[serde(transparent)]
 pub struct DefId(pub usize);
 
 #[derive(Clone, PartialEq, Debug, Default)]

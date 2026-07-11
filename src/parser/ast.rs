@@ -2,6 +2,7 @@ use crate::extension::SourceSpanExt;
 use crate::lexer::token_kind::Punct;
 use crate::lexer::{Token, TokenKind};
 use miette::SourceSpan;
+use serde::Serialize;
 
 #[derive(Copy, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct AstId(pub usize);
@@ -38,7 +39,7 @@ impl<T> AstNode<T> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
 pub struct Ident {
     pub name: String,
 }

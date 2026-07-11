@@ -3,6 +3,7 @@ mod defs;
 mod hir;
 mod span;
 mod token;
+mod ty;
 
 pub use ast::{AstCrate, AstId, AstNode};
 pub use defs::{DefId, DefKind, Definition, PartialRes, PrimTy, Res, SelfTyInfo};
@@ -11,6 +12,7 @@ pub use span::Span;
 pub use token::{
     DelimiterKind, KeywordKind, PublicLiteral, PublicToken, PublicTokenKind, PunctuationKind,
 };
+pub use ty::CollectedTypes;
 
 use std::collections::HashMap;
 
@@ -67,6 +69,7 @@ pub struct PublicOutput {
     pub ast_to_def: HashMap<AstId, DefId>,
     pub resolutions: HashMap<AstId, Res>,
     pub def_map: HashMap<DefId, DefKind>,
+    pub collected_types: CollectedTypes,
 }
 
 impl From<Output> for PublicOutput {
@@ -103,6 +106,7 @@ impl From<Output> for PublicOutput {
                 .iter()
                 .map(|(k, v)| (DefId(k.0), convert_def_kind(v)))
                 .collect(),
+            collected_types: CollectedTypes::from(output.collected_types),
         }
     }
 }
