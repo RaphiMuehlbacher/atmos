@@ -4,7 +4,7 @@ use crate::resolver::ribs::Res;
 use std::collections::HashMap;
 
 #[derive(Copy, Debug, Clone, PartialEq, Eq, Hash, Default)]
-pub struct DefId(usize);
+pub struct DefId(pub usize);
 
 #[derive(Clone, PartialEq, Debug, Default)]
 pub struct DefinitionMap {
@@ -24,7 +24,8 @@ impl DefinitionMap {
 
     pub fn insert(&mut self, id: AstId, kind: DefKind) -> DefId {
         let def_id = self.increment_def_id();
-        self.definitions.insert(def_id, Definition::new(def_id, kind));
+        self.definitions
+            .insert(def_id, Definition::new(def_id, kind));
         self.ast_to_def.insert(id, def_id);
         def_id
     }

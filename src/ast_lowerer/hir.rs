@@ -5,7 +5,7 @@ use crate::resolver::ribs::Res;
 use miette::SourceSpan;
 
 #[derive(Copy, Debug, Clone, PartialEq, Eq, Hash)]
-pub struct HirId(usize);
+pub struct HirId(pub usize);
 
 static mut HIR_ID: usize = 0;
 

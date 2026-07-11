@@ -11,16 +11,6 @@ impl Person<u32> {
     type B = u32;
 }
 
-
-
-
-/*
-struct Person;
-
-impl Person {
-    type A = i32;
-}
-
 fn test(a: Person::A) {}
 */
 

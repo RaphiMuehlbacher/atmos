@@ -4,7 +4,7 @@ use crate::lexer::{Token, TokenKind};
 use miette::SourceSpan;
 
 #[derive(Copy, Debug, Clone, PartialEq, Eq, Hash)]
-pub struct AstId(usize);
+pub struct AstId(pub usize);
 
 static mut AST_ID: usize = 0;
 
