@@ -50,7 +50,7 @@ pub enum Ty {
     Enum(DefId, GenericArgs),
     /// `DefId` of Adt
     InherentTyAlias {
-        adt_def_id: DefId,
+        candidates: Vec<DefId>,
         ident: Ident,
         resolved_args: Vec<hir::GenericArg>,
         unresolved_args: Vec<hir::GenericArg>,

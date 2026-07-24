@@ -204,7 +204,10 @@ impl<'hir> TypeCollector<'hir> {
                 .get(&orig_item_def_id.unwrap())
                 .unwrap();
 
-            assert_eq!(parent_generics.parent, None);
+            assert_eq!(
+                parent_generics.parent, None,
+                "We only support associated items nested one level"
+            );
 
             let generic_params = Generics::with_parent(assoc.node.parent, params, parent_generics.params.len());
             self.collected_types
@@ -372,9 +375,16 @@ impl<'hir> TypeCollector<'hir> {
                             1,
                             "currently only 1 associated item should be possible"
                         );
+                        let impls = self.collected_types.impls_of.get(def_id).unwrap();
+                        let assoc_types = impls
+                            .iter()
+                            .map(|impl_def| self.collected_types.assoc_items.get(impl_def).unwrap())
+                            .flat_map(|assoc_items| assoc_items.iter().map(|assoc| assoc.def_id))
+                            .collect();
+
                         let path = unresolved_segments.first().unwrap().node.clone();
                         ty::Ty::InherentTyAlias {
-                            adt_def_id: *def_id,
+                            candidates: assoc_types,
                             ident: path.ident.node,
                             resolved_args: resolved_segments
                                 .last()
