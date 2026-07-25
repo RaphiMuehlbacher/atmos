@@ -1,5 +1,13 @@
-struct Person<T>;
+struct S;
 
+impl S {
+    type B<T> = T;
+}
+
+fn test(a: S::B<u32>) {}
+
+/*
+struct Person<T>;
 
 impl Person<i32> {
     type A = i32;
@@ -10,7 +18,7 @@ fn test(a: Person<i32>::B) -> i32 { a }
 impl Person<u32> {
     type B = u32;
 }
-
+*/
 
 
 

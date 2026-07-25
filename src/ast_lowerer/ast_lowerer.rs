@@ -264,8 +264,16 @@ impl<'ast> AstLowerer<'ast> {
     }
 
     fn lower_path(&mut self, path: &AstNode<ast::Path>) -> HirNode<hir::Path> {
-        let lowered_path = match self.defs.partial_res.get(&path.ast_id) {
-            Some(partial_res) => {
+        let lowered_path = match self.defs.get_resolution(path.ast_id) {
+            Some(res) => {
+                let segments = self.lower_segments(&path.node.segments);
+                hir::Path::Resolved {
+                    res: res.clone(),
+                    segments,
+                }
+            }
+            None => {
+                let partial_res = self.defs.partial_res.get(&path.ast_id).unwrap();
                 let res = partial_res.base_res();
                 let resolved_segments = path.node.segments.len() - partial_res.unresolved_segments();
                 let lowered_segments = self.lower_segments(&path.node.segments);
@@ -275,12 +283,6 @@ impl<'ast> AstLowerer<'ast> {
                     resolved_segments: lowered_segments[0..resolved_segments].to_vec(),
                     unresolved_segments: lowered_segments[resolved_segments..].to_vec(),
                 }
-            }
-
-            None => {
-                let res = self.defs.get_resolution(path.ast_id).unwrap().clone();
-                let segments = self.lower_segments(&path.node.segments);
-                hir::Path::Resolved { res, segments }
             }
         };
         let hir_node = HirNode::new(lowered_path, path.span);

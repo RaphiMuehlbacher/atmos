@@ -218,6 +218,14 @@ impl<'a, 'r> LateResolver<'a, 'r> {
             return;
         }
 
+        // resolve all generic args even if segments can't get resolved
+        // e.g. S::Assoc<u32>
+        for segment in segments {
+            for arg in &segment.node.args {
+                self.resolve_generic_arg(arg);
+            }
+        }
+
         let first_ident = &segments[0].node.ident.node;
 
         // Single-segment: try bindings first
@@ -225,11 +233,6 @@ impl<'a, 'r> LateResolver<'a, 'r> {
             && let Some(res) = self.lookup_value(first_ident)
         {
             self.r.defs.insert_resolution(path.ast_id, res);
-
-            for arg in &segments[0].node.args {
-                self.resolve_generic_arg(arg);
-            }
-
             return;
         }
 
@@ -240,9 +243,6 @@ impl<'a, 'r> LateResolver<'a, 'r> {
 
         for (i, segment) in segments.iter().enumerate().skip(segment_start) {
             let ident = &segment.node.ident.node;
-            for arg in &segment.node.args {
-                self.resolve_generic_arg(arg);
-            }
 
             let is_last = i == segments.len() - 1;
             match self.resolve_ident_in_module(current_module, ident) {
