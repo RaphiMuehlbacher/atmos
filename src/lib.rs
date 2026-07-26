@@ -34,6 +34,6 @@ pub fn compile_source(session: &Session) {
     let collected_types = type_collector.collect_items();
 
     dbg!(&collected_types);
-    let mut type_checker = TypeChecker::new(session, &hir, collected_types);
+    let mut type_checker = TypeChecker::new(session, &def_to_hir, &hir_nodes, collected_types);
     type_checker.check();
 }

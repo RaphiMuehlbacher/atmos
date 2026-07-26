@@ -1,5 +1,5 @@
 use crate::Resolver;
-use crate::parser::ast::{AssociatedItem, AstNode, BlockExpr, EnumVariant, GenericParam, Ident, Item};
+use crate::parser::ast::{AssociatedItem, AstNode, BlockExpr, EnumVariant, Ident, Item};
 use crate::resolver::modules::{Binding, Import, ImportId, Module, ModuleId, ModuleKind};
 use crate::resolver::visitor;
 

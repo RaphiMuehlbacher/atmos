@@ -1,4 +1,5 @@
 use crate::extension::SourceSpanExt;
+use crate::lexer::token_kind::Kw::Fn;
 use crate::parser::ast::{AstNode, Ident};
 use crate::resolver::DefId;
 use crate::resolver::ribs::Res;
@@ -111,6 +112,15 @@ pub struct AssociatedItem {
     pub def_id: DefId,
     pub parent: DefId,
     pub kind: AssociatedItemKind,
+}
+
+impl AssociatedItem {
+    pub fn ident(&self) -> Ident {
+        match &self.kind {
+            AssociatedItemKind::Fn(fn_sig, _) => fn_sig.node.ident.node.clone(),
+            AssociatedItemKind::Type(assoc_ty_alias) => assoc_ty_alias.node.ident.node.clone(),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
