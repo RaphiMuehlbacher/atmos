@@ -121,6 +121,22 @@ pub struct Generics {
 pub struct GenericParamDef {
     pub def_id: DefId,
     pub index: usize,
+    pub kind: GenericParamKind,
+}
+
+#[derive(Debug, Clone)]
+pub enum GenericParamKind {
+    Type,
+    Const,
+}
+
+impl From<hir::GenericParamKind> for GenericParamKind {
+    fn from(kind: hir::GenericParamKind) -> Self {
+        match kind {
+            hir::GenericParamKind::Const(_) => Self::Const,
+            hir::GenericParamKind::Type => Self::Type,
+        }
+    }
 }
 
 impl Generics {
@@ -131,6 +147,7 @@ impl Generics {
             .map(|(i, param)| GenericParamDef {
                 def_id: param.node.def_id,
                 index: index_start + i,
+                kind: param.node.kind.clone().into(),
             })
             .collect();
 
@@ -152,6 +169,7 @@ impl Generics {
             GenericParamDef {
                 def_id: trait_def_id,
                 index: 0,
+                kind: GenericParamKind::Type,
             },
         );
         generics

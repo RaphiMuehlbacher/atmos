@@ -347,7 +347,6 @@ impl<'hir> TypeCollector<'hir> {
                             }
                         },
                         DefKind::GenericParam => {
-                            // dbg!(def_id, &self.collected_types.generics_of);
                             let index = self
                                 .collected_types
                                 .generics_of

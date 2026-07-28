@@ -1,26 +1,280 @@
 use crate::Session;
-use crate::ast_lowerer::hir::Crate;
-use crate::type_checker::ty::{CollectedTypes, Ty, TyVarId};
+use crate::ast_lowerer::hir::{self, BlockExpr, FnDecl, FnSig, HirId, HirNode, Item, Node, Pattern, Stmt};
+use crate::resolver::DefId;
+use crate::resolver::defs::DefKind;
+use crate::resolver::ribs::Res;
+use crate::type_checker::ty::{self, CollectedTypes, GenericArg, GenericArgs, GenericParamDef, Ty, TyVarId};
 use std::collections::HashMap;
 
+#[derive(Default)]
 pub struct InferCtxt {
     type_var_map: HashMap<TyVarId, Ty>,
+    locals: HashMap<HirId, Ty>,
+    current_ty_var: u32,
+}
+
+impl InferCtxt {
+    pub fn next_ty_var(&mut self) -> Ty {
+        let ty_var = Ty::TyVar(TyVarId::new(self.current_ty_var));
+        self.current_ty_var += 1;
+        ty_var
+    }
 }
 
 pub struct TypeChecker<'hir> {
     session: &'hir Session,
-    hir: &'hir Crate,
     collected_types: CollectedTypes,
+    def_to_hir: &'hir HashMap<DefId, HirId>,
+    hir_nodes: &'hir HashMap<HirId, Node>,
+    infer_ctxt: InferCtxt,
 }
 
 impl<'hir> TypeChecker<'hir> {
-    pub fn new(session: &'hir Session, hir: &'hir Crate, collected_types: CollectedTypes) -> Self {
+    pub fn new(
+        session: &'hir Session,
+        def_to_hir: &'hir HashMap<DefId, HirId>,
+        hir_nodes: &'hir HashMap<HirId, Node>,
+        collected_types: CollectedTypes,
+    ) -> Self {
         Self {
             session,
-            hir,
+            def_to_hir,
+            hir_nodes,
             collected_types,
+            infer_ctxt: InferCtxt::default(),
         }
     }
 
-    pub fn check(&mut self) {}
+    pub fn check(&mut self) {
+        for (def_id, hir_id) in self.def_to_hir {
+            let Node::Item(item_kind) = self.hir_nodes.get(hir_id).unwrap() else {
+                continue;
+            };
+            let Item::Fn(FnDecl { def_id: _, sig, body }) = &item_kind.node else {
+                continue;
+            };
+
+            self.check_fn(*def_id, sig, body);
+        }
+    }
+
+    fn check_fn(&mut self, def_id: DefId, sig: &HirNode<FnSig>, body: &HirNode<BlockExpr>) {
+        let fn_sig_ty = self.collected_types.fn_sig.get(&def_id).unwrap();
+
+        for (param, param_ty) in sig.node.params.iter().zip(fn_sig_ty.params.clone()) {
+            self.check_pattern(&param.node.pattern, param_ty);
+            // self.infer_ctxt.locals.insert(param.hir_id, param_ty.clone());
+        }
+
+        self.check_block(body);
+        todo!()
+    }
+
+    fn check_block(&mut self, block: &HirNode<BlockExpr>) {
+        for stmt in &block.node.stmts {
+            match &stmt.node {
+                Stmt::Let(let_stmt) => {
+                    let expected = let_stmt
+                        .ty
+                        .as_ref()
+                        .map_or(self.infer_ctxt.next_ty_var(), |ty| self.lower_ty(ty));
+                    self.check_pattern(&let_stmt.pattern, expected);
+                }
+                Stmt::Item(item) => todo!(),
+                Stmt::Semi(expr) => todo!(),
+                Stmt::Expr(expr) => todo!(),
+            }
+        }
+    }
+
+    fn check_pattern(&mut self, pattern: &HirNode<Pattern>, expected: Ty) {
+        let ty = match &pattern.node {
+            Pattern::Wildcard => expected,
+            Pattern::Or(patterns) => {
+                for pattern in patterns {
+                    let ty_var = self.infer_ctxt.next_ty_var();
+                    self.check_pattern(pattern, ty_var);
+                }
+                expected
+            }
+            Pattern::Path(path) => panic!("path in this position not valid, {path:?}"),
+            Pattern::Struct(path, pattern_struct_field) => todo!(),
+            Pattern::TupleStruct(path, patterns) => todo!(),
+            Pattern::Tuple(patterns) => {
+                let elements_ty: Vec<Ty> = (0..patterns.len()).map(|_| self.infer_ctxt.next_ty_var()).collect();
+                for (i, pattern) in patterns.iter().enumerate() {
+                    self.check_pattern(pattern, elements_ty[i].clone());
+                }
+                Ty::Tuple(elements_ty)
+            }
+            Pattern::Expr(expr) => todo!(),
+            Pattern::Err => todo!(),
+        };
+        self.infer_ctxt.locals.insert(pattern.hir_id, ty);
+    }
+
+    fn lower_ty(&self, hir_ty: &HirNode<hir::Ty>) -> Ty {
+        match &hir_ty.node {
+            hir::Ty::Path(path) => match &path.node {
+                hir::Path::Resolved { res, segments } => self.lower_resolved_ty(res, segments),
+                hir::Path::Unresolved {
+                    res,
+                    resolved_segments,
+                    unresolved_segments,
+                } => todo!(),
+            },
+            hir::Ty::Array(ty, _) => Ty::Array(Box::new(self.lower_ty(ty)), todo!()),
+            hir::Ty::Ptr(ty) => Ty::Ptr(Box::new(self.lower_ty(ty))),
+            hir::Ty::Fn(params, return_ty) => Ty::FnPtr(
+                params.iter().map(|param| self.lower_ty(param)).collect(),
+                Box::new(return_ty.as_ref().map_or(Ty::Unit, |ty| self.lower_ty(ty))),
+            ),
+            hir::Ty::Tuple(types) => Ty::Tuple(types.iter().map(|ty| self.lower_ty(ty)).collect()),
+            hir::Ty::Err => Ty::Err,
+        }
+    }
+
+    fn lower_resolved_ty(&self, res: &Res, segments: &[HirNode<hir::PathSegment>]) -> Ty {
+        match res {
+            Res::Def(def_id, def_kind) => match def_kind {
+                DefKind::Struct => {
+                    let (last_segment, leading_segments) = segments.split_last().unwrap();
+                    // resolved paths can only have modules as leading segments
+                    // e.g. S<i32>::Assoc<u32> is not possible
+                    self.prohibit_generic_args(leading_segments);
+
+                    let generics = self.generics_of(*def_id);
+                    let generic_args = self.generic_args(last_segment);
+                    assert_eq!(generics.len(), generic_args.len());
+
+                    for (arg, param) in generics.iter().zip(&generic_args) {
+                        match (&arg.kind, param) {
+                            (ty::GenericParamKind::Type, GenericArg::Type(_)) => {}
+                            (ty::GenericParamKind::Const, GenericArg::Const(_)) => {}
+                            _ => panic!("emit error"),
+                        }
+                    }
+
+                    Ty::Struct(*def_id, generic_args)
+                }
+                DefKind::Enum => {
+                    let (last_segment, leading_segments) = segments.split_last().unwrap();
+                    // resolved paths can only have modules as leading segments
+                    // e.g. S<i32>::Assoc<u32> is not possible
+                    self.prohibit_generic_args(leading_segments);
+
+                    let generics = self.generics_of(*def_id);
+                    let generic_args = self.generic_args(last_segment);
+                    assert_eq!(generics.len(), generic_args.len());
+
+                    for (arg, param) in generics.iter().zip(&generic_args) {
+                        match (&arg.kind, param) {
+                            (ty::GenericParamKind::Type, GenericArg::Type(_)) => {}
+                            (ty::GenericParamKind::Const, GenericArg::Const(_)) => {}
+                            _ => panic!("emit error"),
+                        }
+                    }
+
+                    Ty::Enum(*def_id, generic_args)
+                }
+                DefKind::StructField => todo!(),
+                DefKind::EnumVariant => todo!(),
+                DefKind::Trait => todo!(),
+                DefKind::Mod => todo!(),
+                DefKind::Impl => todo!(),
+                DefKind::AssocFn => todo!(),
+                DefKind::ExternFn => todo!(),
+                DefKind::Use => todo!(),
+                DefKind::Const => todo!(),
+                DefKind::GenericParam => todo!(),
+                DefKind::TypeAlias => todo!(),
+                DefKind::AssocTypeAlias => todo!(),
+                DefKind::Function => todo!(),
+            },
+            Res::Local(ast_id) => todo!(),
+            Res::PrimTy(prim_ty) => todo!(),
+            Res::SelfTy(self_ty_info) => todo!(),
+            Res::Err => todo!(),
+        }
+    }
+
+    fn generics_of(&self, def_id: DefId) -> Vec<GenericParamDef> {
+        let self_generics = self.collected_types.generics_of.get(&def_id).unwrap();
+        let mut generics = self_generics.params.clone();
+        if let Some(parent_def_id) = self_generics.parent {
+            let parent_generics = self.collected_types.generics_of.get(&parent_def_id).unwrap();
+            assert_eq!(
+                parent_generics.parent, None,
+                "We only support associated items nested one level"
+            );
+            generics.append(&mut parent_generics.params.clone());
+        }
+        generics
+    }
+
+    fn generic_args(&self, segment: &HirNode<hir::PathSegment>) -> GenericArgs {
+        let mut args = vec![];
+        for arg in &segment.node.args {
+            let arg = match &arg.node {
+                hir::GenericArg::Type(ty) => GenericArg::Type(self.lower_ty(ty)),
+                hir::GenericArg::Const(_) => todo!(),
+            };
+            args.push(arg);
+        }
+        args
+    }
+
+    fn prohibit_generic_args(&self, segments: &[HirNode<hir::PathSegment>]) {
+        for segment in segments {
+            if !segment.node.args.is_empty() {
+                panic!("implement error variant")
+            }
+        }
+    }
+
+    fn instantiate(&self, ty: &Ty, substs: &[Ty]) -> Ty {
+        match ty {
+            Ty::Unit | Ty::Bool | Ty::I32 | Ty::U32 | Ty::F64 | Ty::Str | Ty::Never | Ty::TyVar(_) | Ty::Err => {
+                ty.clone()
+            }
+            Ty::Array(ty, _) => Ty::Array(Box::new(self.instantiate(ty, substs)), todo!()),
+            Ty::Slice(ty) => Ty::Slice(Box::new(self.instantiate(ty, substs))),
+            Ty::Tuple(types) => Ty::Tuple(types.iter().map(|ty| self.instantiate(ty, substs)).collect()),
+            Ty::Ptr(ty) => Ty::Ptr(Box::new(self.instantiate(ty, substs))),
+            Ty::FnPtr(params, return_ty) => Ty::FnPtr(
+                params.iter().map(|ty| self.instantiate(ty, substs)).collect(),
+                Box::new(self.instantiate(return_ty, substs)),
+            ),
+            Ty::Fn(def_id, generic_args) => Ty::Fn(
+                *def_id,
+                generic_args
+                    .iter()
+                    .map(|arg| self.instantiate_generic_arg(arg, substs))
+                    .collect(),
+            ),
+            Ty::Struct(def_id, generic_args) => Ty::Struct(
+                *def_id,
+                generic_args
+                    .iter()
+                    .map(|arg| self.instantiate_generic_arg(arg, substs))
+                    .collect(),
+            ),
+            Ty::Enum(def_id, generic_args) => Ty::Enum(
+                *def_id,
+                generic_args
+                    .iter()
+                    .map(|arg| self.instantiate_generic_arg(arg, substs))
+                    .collect(),
+            ),
+            Ty::InherentTyAlias { .. } => todo!(),
+            Ty::GenericParam(index) => substs[*index].clone(),
+        }
+    }
+
+    fn instantiate_generic_arg(&self, generic_arg: &GenericArg, substs: &[Ty]) -> GenericArg {
+        match generic_arg {
+            GenericArg::Type(ty) => GenericArg::Type(self.instantiate(ty, substs)),
+            GenericArg::Const(_) => todo!(),
+        }
+    }
 }
