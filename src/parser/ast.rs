@@ -85,6 +85,7 @@ pub enum Ty {
 pub enum Pattern {
     Wildcard,
     Or(Vec<AstNode<Pattern>>),
+    Ident(AstNode<Ident>),
     Path(AstNode<Path>),
     Struct(AstNode<Path>, Vec<AstNode<PatternStructField>>),
     TupleStruct(AstNode<Path>, Vec<AstNode<Pattern>>),

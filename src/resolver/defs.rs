@@ -9,7 +9,7 @@ pub struct DefId(usize);
 #[derive(Clone, PartialEq, Debug, Default)]
 pub struct DefinitionMap {
     pub definitions: HashMap<DefId, Definition>,
-    pub resolutions: HashMap<AstId, Res>,
+    pub resolutions: HashMap<AstId, Res<AstId>>,
     pub ast_to_def: HashMap<AstId, DefId>,
     pub partial_res: HashMap<AstId, PartialRes>,
     next_def_id: DefId,
@@ -43,12 +43,12 @@ impl DefinitionMap {
         self.ast_to_def.get(&ast_id)
     }
 
-    pub fn insert_resolution(&mut self, ast_id: AstId, resolution: Res) {
+    pub fn insert_resolution(&mut self, ast_id: AstId, resolution: Res<AstId>) {
         self.resolutions.insert(ast_id, resolution);
     }
 
     #[must_use]
-    pub fn get_resolution(&self, ast_id: AstId) -> Option<&Res> {
+    pub fn get_resolution(&self, ast_id: AstId) -> Option<&Res<AstId>> {
         self.resolutions.get(&ast_id)
     }
 }
@@ -104,13 +104,13 @@ impl From<&Item> for DefKind {
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct PartialRes {
-    base_res: Res,
+    base_res: Res<AstId>,
     unresolved_segments: usize,
 }
 
 impl PartialRes {
     #[must_use]
-    pub fn new(base_res: Res, unresolved_segments: usize) -> Self {
+    pub fn new(base_res: Res<AstId>, unresolved_segments: usize) -> Self {
         Self {
             base_res,
             unresolved_segments,
@@ -118,7 +118,7 @@ impl PartialRes {
     }
 
     #[must_use]
-    pub fn base_res(&self) -> Res {
+    pub fn base_res(&self) -> Res<AstId> {
         self.base_res.clone()
     }
 

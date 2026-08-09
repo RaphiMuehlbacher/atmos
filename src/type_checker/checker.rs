@@ -105,21 +105,8 @@ impl<'hir> TypeChecker<'hir> {
                 }
                 expected
             }
-            Pattern::Path(path) => match &path.node {
-                hir::Path::Resolved { res, segments } => {
-                    if segments.len() == 1 {
-                        assert_matches!(res, Res::Local(_));
-                        expected
-                    } else {
-                        todo!()
-                    }
-                }
-                hir::Path::Unresolved {
-                    res,
-                    resolved_segments,
-                    unresolved_segments,
-                } => todo!(),
-            },
+            Pattern::Binding(binding) => expected,
+            Pattern::Path(path) => todo!(),
             Pattern::Struct(path, pattern_struct_field) => todo!(),
             Pattern::TupleStruct(path, patterns) => todo!(),
             Pattern::Tuple(patterns) => {
@@ -309,7 +296,7 @@ impl<'hir> TypeChecker<'hir> {
         }
     }
 
-    fn check_expression(&self, expr: &HirNode<hir::Expr>) -> Ty {
+    fn check_expression(&mut self, expr: &HirNode<hir::Expr>) -> Ty {
         match &expr.node {
             hir::Expr::Array(hir_nodes) => todo!(),
             hir::Expr::Struct(struct_expr) => todo!(),
@@ -324,7 +311,22 @@ impl<'hir> TypeChecker<'hir> {
             hir::Expr::Assign(assign_expr) => todo!(),
             hir::Expr::Field(field_expr) => todo!(),
             hir::Expr::Index(index_expr) => todo!(),
-            hir::Expr::Path(hir_node) => todo!(),
+            hir::Expr::Path(path) => match &path.node {
+                hir::Path::Resolved { res, segments } => {
+                    if segments.len() == 1
+                        && let Res::Local(hir_id) = res
+                    {
+                        self.infer_ctxt.types.get(hir_id).unwrap().clone()
+                    } else {
+                        todo!()
+                    }
+                }
+                hir::Path::Unresolved {
+                    res,
+                    resolved_segments,
+                    unresolved_segments,
+                } => todo!(),
+            },
             hir::Expr::AddrOf(hir_node) => todo!(),
             hir::Expr::Break(hir_node) => todo!(),
             hir::Expr::Continue => todo!(),
@@ -367,7 +369,7 @@ impl<'hir> TypeChecker<'hir> {
                     self.unify(found, expected);
                 }
             }
-            _ => todo!(),
+            _ => panic!("unification failed"),
         }
     }
 

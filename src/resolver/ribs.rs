@@ -1,3 +1,4 @@
+use crate::ast_lowerer::hir::HirId;
 use crate::parser::AstId;
 use crate::parser::ast::Ident;
 use crate::resolver::DefId;
@@ -39,8 +40,8 @@ pub struct SelfTyInfo {
 }
 
 #[derive(Clone, PartialEq, Debug)]
-pub enum Res {
-    Local(AstId),
+pub enum Res<Id = HirId> {
+    Local(Id),
     Def(DefId, DefKind),
     PrimTy(PrimTy),
     SelfTy(SelfTyInfo),
@@ -49,7 +50,7 @@ pub enum Res {
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct Rib {
-    symbols: HashMap<Ident, Res>,
+    symbols: HashMap<Ident, Res<AstId>>,
     kind: RibKind,
 }
 
@@ -72,12 +73,12 @@ impl Rib {
         Self::new(RibKind::Item)
     }
 
-    pub fn insert(&mut self, name: Ident, res: Res) {
+    pub fn insert(&mut self, name: Ident, res: Res<AstId>) {
         self.symbols.insert(name, res);
     }
 
     #[must_use]
-    pub fn get(&self, name: &Ident) -> Option<Res> {
+    pub fn get(&self, name: &Ident) -> Option<Res<AstId>> {
         self.symbols.get(name).cloned()
     }
 }

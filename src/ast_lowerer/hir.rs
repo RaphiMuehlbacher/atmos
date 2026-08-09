@@ -92,6 +92,7 @@ pub enum Ty {
 pub enum Pattern {
     Wildcard,
     Or(Vec<HirNode<Pattern>>),
+    Binding(HirNode<Ident>),
     Path(HirNode<Path>),
     Struct(HirNode<Path>, Vec<HirNode<PatternStructField>>),
     TupleStruct(HirNode<Path>, Vec<HirNode<Pattern>>),

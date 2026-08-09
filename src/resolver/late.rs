@@ -1,4 +1,5 @@
 use crate::error::CompilerError;
+use crate::parser::AstId;
 use crate::parser::ast::{
     AstNode, BlockExpr, Expr, GenericArg, GenericParam, Ident, Item, LetStmt, Path, PathSegment, Pattern, Ty,
 };
@@ -90,49 +91,43 @@ impl<'a, 'r> LateResolver<'a, 'r> {
                     pattern_bindings.extend(alt_bindings);
                 }
             }
-            Pattern::Path(path) => {
-                if path.node.segments.len() == 1 {
-                    let segment = &path.node.segments[0];
-                    let name = &segment.node.ident;
+            Pattern::Ident(ident) => {
+                if ident.node.name == "Self" {
+                    self.r
+                        .session
+                        .push_error(CompilerError::ResolverError(ResolverError::SelfAsBinding {
+                            src: self.r.session.get_named_source(),
+                            span: ident.span,
+                        }));
+                    return;
+                }
 
-                    if name.node.name == "Self" {
-                        self.r
-                            .session
-                            .push_error(CompilerError::ResolverError(ResolverError::SelfAsBinding {
-                                src: self.r.session.get_named_source(),
-                                span: name.span,
-                            }));
-                        return;
-                    }
-
-                    if matches!(source, PatternSource::Match)
-                        && let Some(res) = self.lookup_value(&name.node)
-                    {
-                        match res {
-                            Res::Local(_) | Res::PrimTy(_) | Res::SelfTy(_) | Res::Err => {}
-                            Res::Def(def_id, _) => {
-                                self.r.defs.insert_ast_id(path.ast_id, def_id);
-                                return;
-                            }
+                if matches!(source, PatternSource::Match)
+                    && let Some(res) = self.lookup_value(&ident.node)
+                {
+                    match res {
+                        Res::Local(_) | Res::PrimTy(_) | Res::SelfTy(_) | Res::Err => {}
+                        Res::Def(def_id, _) => {
+                            self.r.defs.insert_ast_id(ident.ast_id, def_id);
+                            return;
                         }
                     }
-
-                    if !pattern_bindings.insert(name.node.clone()) && self.innermost_rib().get(&name.node).is_some() {
-                        self.r
-                            .session
-                            .push_error(CompilerError::ResolverError(ResolverError::DuplicateDefinition {
-                                src: self.r.session.get_named_source(),
-                                span: name.span,
-                                name: name.node.name.clone(),
-                            }));
-                    }
-
-                    self.define_local_binding(name, pattern);
-                    self.r.defs.insert_resolution(path.ast_id, Res::Local(pattern.ast_id));
-                } else {
-                    self.resolve_path(path);
                 }
+
+                if !pattern_bindings.insert(ident.node.clone()) && self.innermost_rib().get(&ident.node).is_some() {
+                    self.r
+                        .session
+                        .push_error(CompilerError::ResolverError(ResolverError::DuplicateDefinition {
+                            src: self.r.session.get_named_source(),
+                            span: ident.span,
+                            name: ident.node.name.clone(),
+                        }));
+                }
+
+                self.define_local_binding(ident, pattern);
+                self.r.defs.insert_resolution(ident.ast_id, Res::Local(pattern.ast_id));
             }
+            Pattern::Path(path) => self.resolve_path(path),
             Pattern::Paren(pattern) => self.resolve_pattern_inner(pattern, source, pattern_bindings),
             Pattern::Tuple(patterns) => {
                 for pattern in patterns {
@@ -156,11 +151,11 @@ impl<'a, 'r> LateResolver<'a, 'r> {
         }
     }
 
-    fn lookup_ribs(&self, ident: &Ident) -> Option<Res> {
+    fn lookup_ribs(&self, ident: &Ident) -> Option<Res<AstId>> {
         self.ribs.iter().rev().find_map(|rib| rib.get(ident))
     }
 
-    fn lookup_modules(&self, ident: &Ident, module_id: ModuleId) -> Option<Res> {
+    fn lookup_modules(&self, ident: &Ident, module_id: ModuleId) -> Option<Res<AstId>> {
         let module = self.r.module_arena.get(module_id);
         match module.get(ident) {
             None => self.lookup_modules(ident, module.parent()?),
@@ -174,13 +169,13 @@ impl<'a, 'r> LateResolver<'a, 'r> {
         }
     }
 
-    fn lookup_value(&self, ident: &Ident) -> Option<Res> {
+    fn lookup_value(&self, ident: &Ident) -> Option<Res<AstId>> {
         self.lookup_ribs(ident)
             .or_else(|| self.lookup_modules(ident, self.parent))
             .or_else(|| Self::lookup_prim_ty(ident))
     }
 
-    fn lookup_prim_ty(ident: &Ident) -> Option<Res> {
+    fn lookup_prim_ty(ident: &Ident) -> Option<Res<AstId>> {
         PrimTy::from_name(&ident.name).map(Res::PrimTy)
     }
 

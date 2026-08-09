@@ -888,6 +888,8 @@ impl<'a> Parser<'a> {
                 Self::parse_pattern,
             )?;
             Pattern::TupleStruct(path, patterns)
+        } else if path.node.segments.len() == 1 {
+            Pattern::Ident(path.node.segments[0].node.ident.clone())
         } else {
             Pattern::Path(path)
         };

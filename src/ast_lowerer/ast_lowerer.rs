@@ -1,15 +1,16 @@
-use crate::ast_lowerer::hir;
-use crate::ast_lowerer::hir::HirNode;
-use crate::parser::ast;
+use crate::ast_lowerer::hir::{self, HirId, HirNode};
 use crate::parser::ast::AstNode;
+use crate::parser::{AstId, ast};
 use crate::resolver::defs::{DefId, DefinitionMap};
+use crate::resolver::ribs::Res;
 use std::collections::HashMap;
 
 pub struct AstLowerer<'ast> {
     ast: &'ast ast::Crate,
     defs: &'ast DefinitionMap,
-    hir_nodes: HashMap<hir::HirId, hir::Node>,
-    def_to_hir: HashMap<DefId, hir::HirId>,
+    hir_nodes: HashMap<HirId, hir::Node>,
+    def_to_hir: HashMap<DefId, HirId>,
+    ast_to_hir: HashMap<AstId, HirId>,
 }
 
 impl<'ast> AstLowerer<'ast> {
@@ -20,18 +21,19 @@ impl<'ast> AstLowerer<'ast> {
             defs,
             hir_nodes: HashMap::new(),
             def_to_hir: HashMap::new(),
+            ast_to_hir: HashMap::new(),
         }
     }
 
-    fn insert_node(&mut self, hir_id: hir::HirId, node: hir::Node) {
+    fn insert_node(&mut self, hir_id: HirId, node: hir::Node) {
         self.hir_nodes.insert(hir_id, node);
     }
 
-    fn insert_def(&mut self, def_id: DefId, hir_id: hir::HirId) {
+    fn insert_def(&mut self, def_id: DefId, hir_id: HirId) {
         self.def_to_hir.insert(def_id, hir_id);
     }
 
-    pub fn lower(&mut self) -> (hir::Crate, HashMap<hir::HirId, hir::Node>, HashMap<DefId, hir::HirId>) {
+    pub fn lower(&mut self) -> (hir::Crate, HashMap<HirId, hir::Node>, HashMap<DefId, HirId>) {
         let items = self
             .ast
             .items
@@ -263,12 +265,25 @@ impl<'ast> AstLowerer<'ast> {
         hir_node
     }
 
+    fn lower_res(&mut self, res: &Res<AstId>) -> Res {
+        match res {
+            Res::Local(ast_id) => {
+                let hir_id = self.ast_to_hir.get(ast_id).unwrap();
+                Res::Local(*hir_id)
+            }
+            Res::Def(def_id, def_kind) => Res::Def(*def_id, *def_kind),
+            Res::PrimTy(prim_ty) => Res::PrimTy(*prim_ty),
+            Res::SelfTy(self_ty_info) => Res::SelfTy(*self_ty_info),
+            Res::Err => Res::Err,
+        }
+    }
+
     fn lower_path(&mut self, path: &AstNode<ast::Path>) -> HirNode<hir::Path> {
         let lowered_path = match self.defs.get_resolution(path.ast_id) {
             Some(res) => {
                 let segments = self.lower_segments(&path.node.segments);
                 hir::Path::Resolved {
-                    res: res.clone(),
+                    res: self.lower_res(res),
                     segments,
                 }
             }
@@ -279,7 +294,7 @@ impl<'ast> AstLowerer<'ast> {
                 let lowered_segments = self.lower_segments(&path.node.segments);
 
                 hir::Path::Unresolved {
-                    res,
+                    res: self.lower_res(&res),
                     resolved_segments: lowered_segments[0..resolved_segments].to_vec(),
                     unresolved_segments: lowered_segments[resolved_segments..].to_vec(),
                 }
@@ -610,10 +625,17 @@ impl<'ast> AstLowerer<'ast> {
     }
 
     fn lower_pattern(&mut self, pattern: &AstNode<ast::Pattern>) -> HirNode<hir::Pattern> {
+        let hir_id = HirNode::<hir::Pattern>::fresh_hir_id();
         let pat = match &pattern.node {
             ast::Pattern::Wildcard => hir::Pattern::Wildcard,
             ast::Pattern::Or(patterns) => {
                 hir::Pattern::Or(patterns.iter().map(|pat| self.lower_pattern(pat)).collect())
+            }
+            ast::Pattern::Ident(ident) => {
+                let res = self.defs.get_resolution(ident.ast_id).unwrap();
+                let Res::Local(ast_id) = res else { panic!() };
+                self.ast_to_hir.insert(*ast_id, hir_id);
+                hir::Pattern::Binding(ident.clone().into())
             }
             ast::Pattern::Path(path) => hir::Pattern::Path(self.lower_path(path)),
             ast::Pattern::Struct(path, struct_fields) => {
@@ -638,7 +660,7 @@ impl<'ast> AstLowerer<'ast> {
             ast::Pattern::Err => hir::Pattern::Err,
         };
 
-        let hir_node = HirNode::new(pat, pattern.span);
+        let hir_node = HirNode::with_id(pat, pattern.span, hir_id);
         self.insert_node(hir_node.hir_id, hir::Node::Pattern(hir_node.clone()));
         hir_node
     }

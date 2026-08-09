@@ -384,6 +384,7 @@ pub fn walk_pattern(visitor: &mut impl Visitor, pattern: &AstNode<Pattern>) {
     match &pattern.node {
         Pattern::Wildcard | Pattern::Err => {}
         Pattern::Or(patterns) | Pattern::Tuple(patterns) => visit_list!(visitor, visit_pattern, patterns),
+        Pattern::Ident(ident) => visitor.visit_ident(ident),
         Pattern::Path(path) => visitor.visit_path(path),
         Pattern::Struct(path, fields) => {
             visitor.visit_path(path);
