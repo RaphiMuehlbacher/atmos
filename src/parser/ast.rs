@@ -75,7 +75,7 @@ pub enum Ty {
     Path(AstNode<Path>),
     Array(Box<AstNode<Ty>>, Box<AstNode<Expr>>),
     Ptr(Box<AstNode<Ty>>),
-    Fn(Vec<AstNode<Ty>>, Box<Option<AstNode<Ty>>>),
+    Fn(Vec<AstNode<Ty>>, Option<Box<AstNode<Ty>>>),
     Tuple(Vec<AstNode<Ty>>),
     Paren(Box<AstNode<Ty>>),
     Err,

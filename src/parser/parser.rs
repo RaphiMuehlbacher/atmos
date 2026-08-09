@@ -1020,7 +1020,7 @@ impl<'a> Parser<'a> {
 
                 let return_ty = self.parse_return_type()?;
 
-                Ty::Fn(param_types, Box::new(return_ty))
+                Ty::Fn(param_types, return_ty.map(Box::new))
             }
             TokenKind::OpeningDelimiter(Delimiter::Bracket) => {
                 self.advance();

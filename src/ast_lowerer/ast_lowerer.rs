@@ -426,10 +426,8 @@ impl<'ast> AstLowerer<'ast> {
                 let then_branch = self.lower_block_expr(&while_expr.body);
                 let else_branch = HirNode::new(
                     hir::BlockExpr {
-                        stmts: vec![HirNode::new(
-                            hir::Stmt::Expr(HirNode::new(hir::Expr::Break(None), expr.span)),
-                            expr.span,
-                        )],
+                        stmts: vec![],
+                        expr: Some(Box::new(HirNode::new(hir::Expr::Break(None), expr.span))),
                     },
                     expr.span,
                 );
@@ -440,10 +438,8 @@ impl<'ast> AstLowerer<'ast> {
                 });
                 let body = HirNode::new(
                     hir::BlockExpr {
-                        stmts: vec![HirNode::new(
-                            hir::Stmt::Expr(HirNode::new(if_expr, expr.span)),
-                            expr.span,
-                        )],
+                        stmts: vec![],
+                        expr: Some(Box::new(HirNode::new(if_expr, expr.span))),
                     },
                     expr.span,
                 );
@@ -613,14 +609,26 @@ impl<'ast> AstLowerer<'ast> {
     }
 
     fn lower_block_expr(&mut self, block: &AstNode<ast::BlockExpr>) -> HirNode<hir::BlockExpr> {
-        let stmts = block
+        let mut stmts: Vec<_> = block
             .node
             .stmts
             .iter()
             .filter(|stmt| !matches!(&stmt.node, ast::Stmt::Item(item) if matches!(item.node, ast::Item::Use(_))))
             .map(|stmt| self.lower_stmt(stmt))
             .collect();
-        let hir_node = HirNode::new(hir::BlockExpr { stmts }, block.span);
+
+        let expr = match stmts.last().map(|stmt| &stmt.node) {
+            Some(ast::Stmt::Expr(expr)) => {
+                let expr = expr.clone();
+                stmts.pop();
+                Some(Box::new(self.lower_expr(&expr)))
+            }
+            _ => None,
+        };
+
+        let stmts = stmts.into_iter().map(|stmt| self.lower_stmt(stmt)).collect();
+
+        let hir_node = HirNode::new(hir::BlockExpr { stmts, expr }, block.span);
         self.insert_node(hir_node.hir_id, hir::Node::Block(hir_node.clone()));
         hir_node
     }

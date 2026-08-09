@@ -75,7 +75,7 @@ impl<'hir> TypeChecker<'hir> {
         todo!()
     }
 
-    fn check_block(&mut self, block: &HirNode<BlockExpr>) {
+    fn check_block(&mut self, block: &HirNode<BlockExpr>) -> Ty {
         for stmt in &block.node.stmts {
             match &stmt.node {
                 Stmt::Let(let_stmt) => {
@@ -97,6 +97,12 @@ impl<'hir> TypeChecker<'hir> {
                 }
             }
         }
+
+        block
+            .node
+            .expr
+            .as_ref()
+            .map_or(Ty::Unit, |expr| self.check_expression(&expr))
     }
 
     fn check_pattern(&mut self, pattern: &HirNode<Pattern>, expected: Ty) {
@@ -336,9 +342,9 @@ impl<'hir> TypeChecker<'hir> {
                     unresolved_segments,
                 } => todo!(),
             },
-            hir::Expr::AddrOf(hir_node) => todo!(),
-            hir::Expr::Break(hir_node) => todo!(),
-            hir::Expr::Continue => todo!(),
+            hir::Expr::AddrOf(expr) => self.check_expression(expr),
+            hir::Expr::Break(expr) => expr.as_ref().map_or(Ty::Unit, |expr| self.check_expression(expr)),
+            hir::Expr::Continue => Ty::Unit,
             hir::Expr::Literal(literal) => match literal {
                 hir::Literal::Bool(_) => Ty::Bool,
                 hir::Literal::Int(int_kind) => match int_kind {
@@ -357,8 +363,19 @@ impl<'hir> TypeChecker<'hir> {
                 lhs
             }
             hir::Expr::Unary(unary_expr) => todo!(),
-            hir::Expr::If(if_expr) => todo!(),
-            hir::Expr::Block(hir_node) => todo!(),
+            hir::Expr::If(if_expr) => {
+                let condition = self.check_expression(&if_expr.condition);
+                self.unify(condition, Ty::Bool);
+
+                let then_branch = self.check_block(&if_expr.then_branch);
+                let else_ty = match &if_expr.else_branch {
+                    Some(block) => self.check_block(&block),
+                    None => Ty::Never,
+                };
+                self.unify(then_branch.clone(), else_ty);
+                then_branch
+            }
+            hir::Expr::Block(block) => self.check_block(block),
             hir::Expr::Match(match_expr) => todo!(),
             hir::Expr::Let(let_expr) => todo!(),
             hir::Expr::Err => todo!(),

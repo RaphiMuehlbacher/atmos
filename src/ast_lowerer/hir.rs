@@ -428,6 +428,7 @@ pub struct IfExpr {
 #[derive(Debug, Clone)]
 pub struct BlockExpr {
     pub stmts: Vec<HirNode<Stmt>>,
+    pub expr: Option<Box<HirNode<Expr>>>,
 }
 
 #[derive(Debug, Clone)]
