@@ -79,10 +79,10 @@ impl<'hir> TypeChecker<'hir> {
         for stmt in &block.node.stmts {
             match &stmt.node {
                 Stmt::Let(let_stmt) => {
-                    let expected = let_stmt
-                        .ty
-                        .as_ref()
-                        .map_or(self.infer_ctxt.next_ty_var(), |ty| self.lower_ty(ty));
+                    let expected = match &let_stmt.ty {
+                        Some(ty) => self.lower_ty(ty),
+                        None => self.infer_ctxt.next_ty_var(),
+                    };
 
                     if let Some(expr) = &let_stmt.expr {
                         let expr_ty = self.check_expression(expr);
@@ -92,8 +92,9 @@ impl<'hir> TypeChecker<'hir> {
                     self.check_pattern(&let_stmt.pattern, expected);
                 }
                 Stmt::Item(item) => todo!(),
-                Stmt::Semi(expr) => todo!(),
-                Stmt::Expr(expr) => todo!(),
+                Stmt::Semi(expr) | Stmt::Expr(expr) => {
+                    self.check_expression(expr);
+                }
             }
         }
     }
@@ -311,7 +312,12 @@ impl<'hir> TypeChecker<'hir> {
             hir::Expr::Cast(cast_expr) => todo!(),
             hir::Expr::Return(hir_node) => todo!(),
             hir::Expr::Loop(loop_expr) => todo!(),
-            hir::Expr::Assign(assign_expr) => todo!(),
+            hir::Expr::Assign(assign_expr) => {
+                let lhs = self.check_expression(&assign_expr.lhs);
+                let rhs = self.check_expression(&assign_expr.rhs);
+                self.unify(lhs.clone(), rhs);
+                lhs
+            }
             hir::Expr::Field(field_expr) => todo!(),
             hir::Expr::Index(index_expr) => todo!(),
             hir::Expr::Path(path) => match &path.node {
@@ -344,7 +350,12 @@ impl<'hir> TypeChecker<'hir> {
                 hir::Literal::Str(_) => Ty::Str,
                 hir::Literal::Unit => Ty::Unit,
             },
-            hir::Expr::Binary(binary_expr) => todo!(),
+            hir::Expr::Binary(binary_expr) => {
+                let lhs = self.check_expression(&binary_expr.lhs);
+                let rhs = self.check_expression(&binary_expr.rhs);
+                self.unify(lhs.clone(), rhs);
+                lhs
+            }
             hir::Expr::Unary(unary_expr) => todo!(),
             hir::Expr::If(if_expr) => todo!(),
             hir::Expr::Block(hir_node) => todo!(),
@@ -358,7 +369,7 @@ impl<'hir> TypeChecker<'hir> {
         let found = self.shallow_resolve(found);
         let expected = self.shallow_resolve(expected);
 
-        dbg!(&found, &expected);
+        // dbg!(&found, &expected);
 
         match (found, expected) {
             (Ty::I32, Ty::I32)
@@ -367,6 +378,11 @@ impl<'hir> TypeChecker<'hir> {
             | (Ty::Str, Ty::Str)
             | (Ty::Bool, Ty::Bool)
             | (Ty::Unit, Ty::Unit) => {}
+            (Ty::Infer(InferTy::IntVar(found)), Ty::Infer(InferTy::IntVar(expected))) => {
+                self.infer_ctxt
+                    .type_var_map
+                    .insert(found, Ty::Infer(InferTy::IntVar(expected)));
+            }
             (Ty::Infer(InferTy::TyVar(id)), ty) | (ty, Ty::Infer(InferTy::TyVar(id))) => {
                 self.infer_ctxt.type_var_map.insert(id, ty);
             }
