@@ -567,8 +567,9 @@ impl<'ast> AstLowerer<'ast> {
     fn lower_literal(lit: &ast::LiteralExpr) -> hir::Literal {
         match lit {
             ast::LiteralExpr::Bool(b) => hir::Literal::Bool(*b),
-            ast::LiteralExpr::I32(i) => hir::Literal::I32(*i),
-            ast::LiteralExpr::U32(u) => hir::Literal::U32(*u),
+            ast::LiteralExpr::Int(ast::IntKind::Signed(int)) => hir::Literal::Int(hir::IntKind::Signed(*int)),
+            ast::LiteralExpr::Int(ast::IntKind::Unsigned(int)) => hir::Literal::Int(hir::IntKind::Unsigned(*int)),
+            ast::LiteralExpr::Int(ast::IntKind::Unsuffixed(int)) => hir::Literal::Int(hir::IntKind::Unsuffixed(*int)),
             ast::LiteralExpr::F64(f) => hir::Literal::F64(*f),
             ast::LiteralExpr::Str(s) => hir::Literal::Str(s.clone()),
             ast::LiteralExpr::Unit => hir::Literal::Unit,

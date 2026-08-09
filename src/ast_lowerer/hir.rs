@@ -368,11 +368,17 @@ pub struct IndexExpr {
 #[derive(Debug, Clone)]
 pub enum Literal {
     Bool(bool),
-    I32(i32),
-    U32(u32),
+    Int(IntKind),
     F64(f64),
     Str(String),
     Unit,
+}
+
+#[derive(Debug, Clone)]
+pub enum IntKind {
+    Signed(i32),
+    Unsigned(u32),
+    Unsuffixed(u32),
 }
 
 #[derive(Debug, Clone)]
@@ -455,7 +461,6 @@ pub enum Node {
     Ty(HirNode<Ty>),
     Path(HirNode<Path>),
     PathSegment(HirNode<PathSegment>),
-    Ident(HirNode<Ident>),
     Pattern(HirNode<Pattern>),
     PatField(HirNode<PatternStructField>),
     Expr(HirNode<Expr>),

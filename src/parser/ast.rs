@@ -405,11 +405,17 @@ pub struct BlockExpr {
 #[derive(Debug, Clone)]
 pub enum LiteralExpr {
     Bool(bool),
-    I32(i32),
-    U32(u32),
+    Int(IntKind),
     F64(f64),
     Str(String),
     Unit,
+}
+
+#[derive(Debug, Clone)]
+pub enum IntKind {
+    Signed(i32),
+    Unsigned(u32),
+    Unsuffixed(u32),
 }
 
 #[derive(Debug, Clone)]

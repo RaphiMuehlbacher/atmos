@@ -3,10 +3,7 @@ use crate::ast_lowerer::hir::{self, BlockExpr, FnDecl, FnSig, HirId, HirNode, It
 use crate::resolver::DefId;
 use crate::resolver::defs::DefKind;
 use crate::resolver::ribs::{PrimTy, Res};
-use crate::resolver::DefId;
-use crate::type_checker::ty::{self, CollectedTypes, GenericArg, GenericArgs, GenericParamDef, Ty, TyVarId};
-use crate::Session;
-use std::assert_matches;
+use crate::type_checker::ty::{self, CollectedTypes, GenericArg, GenericArgs, GenericParamDef, InferTy, Ty, TyVarId};
 use std::collections::HashMap;
 
 #[derive(Default, Debug)]
@@ -18,7 +15,13 @@ pub struct InferCtxt {
 
 impl InferCtxt {
     pub fn next_ty_var(&mut self) -> Ty {
-        let ty_var = Ty::TyVar(TyVarId::new(self.current_ty_var));
+        let ty_var = Ty::Infer(InferTy::TyVar(TyVarId::new(self.current_ty_var)));
+        self.current_ty_var += 1;
+        ty_var
+    }
+
+    pub fn next_int_var(&mut self) -> Ty {
+        let ty_var = Ty::Infer(InferTy::IntVar(TyVarId::new(self.current_ty_var)));
         self.current_ty_var += 1;
         ty_var
     }
@@ -252,7 +255,7 @@ impl<'hir> TypeChecker<'hir> {
 
     fn instantiate(&self, ty: &Ty, substs: &[Ty]) -> Ty {
         match ty {
-            Ty::Unit | Ty::Bool | Ty::I32 | Ty::U32 | Ty::F64 | Ty::Str | Ty::Never | Ty::TyVar(_) | Ty::Err => {
+            Ty::Unit | Ty::Bool | Ty::I32 | Ty::U32 | Ty::F64 | Ty::Str | Ty::Never | Ty::Infer(_) | Ty::Err => {
                 ty.clone()
             }
             Ty::Array(ty, _) => Ty::Array(Box::new(self.instantiate(ty, substs)), todo!()),
@@ -332,8 +335,11 @@ impl<'hir> TypeChecker<'hir> {
             hir::Expr::Continue => todo!(),
             hir::Expr::Literal(literal) => match literal {
                 hir::Literal::Bool(_) => Ty::Bool,
-                hir::Literal::I32(_) => Ty::I32,
-                hir::Literal::U32(_) => Ty::U32,
+                hir::Literal::Int(int_kind) => match int_kind {
+                    hir::IntKind::Signed(_) => Ty::I32,
+                    hir::IntKind::Unsigned(_) => Ty::U32,
+                    hir::IntKind::Unsuffixed(_) => self.infer_ctxt.next_int_var(),
+                },
                 hir::Literal::F64(_) => Ty::F64,
                 hir::Literal::Str(_) => Ty::Str,
                 hir::Literal::Unit => Ty::Unit,
@@ -361,8 +367,14 @@ impl<'hir> TypeChecker<'hir> {
             | (Ty::Str, Ty::Str)
             | (Ty::Bool, Ty::Bool)
             | (Ty::Unit, Ty::Unit) => {}
-            (Ty::TyVar(id), ty) | (ty, Ty::TyVar(id)) => {
+            (Ty::Infer(InferTy::TyVar(id)), ty) | (ty, Ty::Infer(InferTy::TyVar(id))) => {
                 self.infer_ctxt.type_var_map.insert(id, ty);
+            }
+            (Ty::Infer(InferTy::IntVar(id)), Ty::I32) | (Ty::I32, Ty::Infer(InferTy::IntVar(id))) => {
+                self.infer_ctxt.type_var_map.insert(id, Ty::I32);
+            }
+            (Ty::Infer(InferTy::IntVar(id)), Ty::U32) | (Ty::U32, Ty::Infer(InferTy::IntVar(id))) => {
+                self.infer_ctxt.type_var_map.insert(id, Ty::U32);
             }
             (Ty::Tuple(found_tys), Ty::Tuple(expected_tys)) => {
                 for (found, expected) in found_tys.into_iter().zip(expected_tys) {
@@ -375,7 +387,9 @@ impl<'hir> TypeChecker<'hir> {
 
     fn shallow_resolve(&self, ty: Ty) -> Ty {
         match ty {
-            Ty::TyVar(ty_var) if let Some(ty) = self.infer_ctxt.type_var_map.get(&ty_var) => {
+            Ty::Infer(InferTy::TyVar(ty_var) | InferTy::IntVar(ty_var))
+                if let Some(ty) = self.infer_ctxt.type_var_map.get(&ty_var) =>
+            {
                 self.shallow_resolve(ty.clone())
             }
             _ => ty,

@@ -11,8 +11,8 @@ use crate::parser::ast::{
     AddrOfExpr, ArrayExpr, AssignExpr, AssignOp, AssignOpExpr, AssocTyAlias, AssociatedItem, AstNode, BinOp,
     BinaryExpr, BlockExpr, BreakExpr, CallExpr, CastExpr, ConstDecl, Crate, EnumDecl, EnumVariant, Expr, ExternFnDecl,
     FieldAccessExpr, FieldDef, FnDecl, FnSig, ForExpr, GenericArg, GenericParam, GenericParamKind, Ident, IfExpr,
-    ImplDecl, IndexExpr, Item, LetExpr, LetStmt, LiteralExpr, LoopExpr, MatchArm, MatchExpr, MethodCallExpr, ModDecl,
-    Param, Path, PathExpr, PathSegment, Pattern, PatternStructField, ReturnExpr, Stmt, StructDecl, StructExpr,
+    ImplDecl, IndexExpr, IntKind, Item, LetExpr, LetStmt, LiteralExpr, LoopExpr, MatchArm, MatchExpr, MethodCallExpr,
+    ModDecl, Param, Path, PathExpr, PathSegment, Pattern, PatternStructField, ReturnExpr, Stmt, StructDecl, StructExpr,
     StructExprField, TraitDecl, TupleExpr, Ty, TyAlias, UnOp, UnaryExpr, UseItem, VariantData, WhileExpr,
 };
 use miette::SourceSpan;
@@ -1413,63 +1413,74 @@ impl<'a> Parser<'a> {
             }
             TokenKind::Literal(lit) => {
                 let token_span = self.current().span;
-                let expr = match lit {
-                    Literal::Str(str) => Expr::Literal(LiteralExpr::Str(str.clone())),
-                    Literal::Integer { value, suffix } => match suffix.as_deref() {
-                        Some("u32") => match value.parse() {
-                            Ok(parsed) => Expr::Literal(LiteralExpr::U32(parsed)),
-                            Err(_) => {
-                                self.emit(self.literal_overflow(
-                                    format!("integer literal `{value}` is too large for type `u32`"),
-                                    token_span,
-                                ));
-                                Expr::Literal(LiteralExpr::U32(0))
+                let expr =
+                    match lit {
+                        Literal::Str(str) => Expr::Literal(LiteralExpr::Str(str.clone())),
+                        Literal::Integer { value, suffix } => match suffix.as_deref() {
+                            Some("u32") => match value.parse() {
+                                Ok(parsed) => Expr::Literal(LiteralExpr::Int(IntKind::Unsigned(parsed))),
+                                Err(_) => {
+                                    self.emit(self.literal_overflow(
+                                        format!("integer literal `{value}` is too large for type `u32`"),
+                                        token_span,
+                                    ));
+                                    Expr::Literal(LiteralExpr::Int(IntKind::Unsigned(0)))
+                                }
+                            },
+                            Some("i32") => match value.parse() {
+                                Ok(parsed) => Expr::Literal(LiteralExpr::Int(IntKind::Signed(parsed))),
+                                Err(_) => {
+                                    self.emit(self.literal_overflow(
+                                        format!("integer literal `{value}` is too large for type `i32`"),
+                                        token_span,
+                                    ));
+                                    Expr::Literal(LiteralExpr::Int(IntKind::Signed(0)))
+                                }
+                            },
+                            Some(invalid_suffix) => {
+                                self.emit(ParserError::InvalidLiteralSuffix {
+                                    src: self.session.get_named_source(),
+                                    span: token_span,
+                                    suffix: invalid_suffix.to_string(),
+                                    literal_type: "integer".to_string(),
+                                    valid_suffixes: "u32, i32, or no suffix".to_string(),
+                                });
+                                Expr::Literal(LiteralExpr::Int(IntKind::Unsuffixed(0)))
                             }
+                            None => match value.parse() {
+                                Ok(parsed) => Expr::Literal(LiteralExpr::Int(IntKind::Unsuffixed(parsed))),
+                                Err(_) => {
+                                    self.emit(self.literal_overflow(
+                                        format!("integer literal `{value}` is too large"),
+                                        token_span,
+                                    ));
+                                    Expr::Literal(LiteralExpr::Int(IntKind::Unsuffixed(0)))
+                                }
+                            },
                         },
-                        Some("i32") | None => match value.parse() {
-                            Ok(parsed) => Expr::Literal(LiteralExpr::I32(parsed)),
-                            Err(_) => {
-                                self.emit(self.literal_overflow(
-                                    format!("integer literal `{value}` is too large for type `i32`"),
-                                    token_span,
-                                ));
-                                Expr::Literal(LiteralExpr::I32(0))
-                            }
-                        },
-                        Some(invalid_suffix) => {
-                            self.emit(ParserError::InvalidLiteralSuffix {
-                                src: self.session.get_named_source(),
-                                span: token_span,
-                                suffix: invalid_suffix.to_string(),
-                                literal_type: "integer".to_string(),
-                                valid_suffixes: "u32, i32, or no suffix".to_string(),
-                            });
-                            Expr::Literal(LiteralExpr::I32(0))
-                        }
-                    },
-                    Literal::Float { value, suffix } => match suffix.as_deref() {
-                        Some("f64") | None => match value.parse() {
-                            Ok(parsed) => Expr::Literal(LiteralExpr::F64(parsed)),
-                            Err(_) => {
-                                self.emit(self.literal_overflow(
-                                    format!("float literal `{value}` is invalid for type `f64`"),
-                                    token_span,
-                                ));
+                        Literal::Float { value, suffix } => match suffix.as_deref() {
+                            Some("f64") | None => match value.parse() {
+                                Ok(parsed) => Expr::Literal(LiteralExpr::F64(parsed)),
+                                Err(_) => {
+                                    self.emit(self.literal_overflow(
+                                        format!("float literal `{value}` is invalid for type `f64`"),
+                                        token_span,
+                                    ));
+                                    Expr::Literal(LiteralExpr::F64(0.0))
+                                }
+                            },
+                            Some(invalid_suffix) => {
+                                self.emit(ParserError::InvalidLiteralSuffix {
+                                    src: self.session.get_named_source(),
+                                    span: token_span,
+                                    suffix: invalid_suffix.to_string(),
+                                    literal_type: "float".to_string(),
+                                    valid_suffixes: "f32 or no suffix".to_string(),
+                                });
                                 Expr::Literal(LiteralExpr::F64(0.0))
                             }
                         },
-                        Some(invalid_suffix) => {
-                            self.emit(ParserError::InvalidLiteralSuffix {
-                                src: self.session.get_named_source(),
-                                span: token_span,
-                                suffix: invalid_suffix.to_string(),
-                                literal_type: "float".to_string(),
-                                valid_suffixes: "f32 or no suffix".to_string(),
-                            });
-                            Expr::Literal(LiteralExpr::F64(0.0))
-                        }
-                    },
-                };
+                    };
                 self.advance();
                 expr
             }

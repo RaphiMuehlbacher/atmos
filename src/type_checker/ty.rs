@@ -56,8 +56,14 @@ pub enum Ty {
         unresolved_args: Vec<hir::GenericArg>,
     },
     GenericParam(usize),
-    TyVar(TyVarId),
+    Infer(InferTy),
     Err,
+}
+
+#[derive(Clone, Debug)]
+pub enum InferTy {
+    TyVar(TyVarId),
+    IntVar(TyVarId),
 }
 
 #[derive(Clone, Debug)]

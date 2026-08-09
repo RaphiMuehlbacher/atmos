@@ -1,5 +1,7 @@
 fn main() {
-    let (a, b): (i32, u32) = (1, 2);
+    let (a, b) = (1, 2);
+    let c: i32 = a;
+    let d: u32 = a;
 }
 
 /*
@@ -7,6 +9,7 @@ struct S<T>(T);
 
 fn test(a: S<i32>) {
 }
+*/
 
 /*
 struct Person<T>;
