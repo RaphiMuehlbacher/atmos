@@ -1,5 +1,4 @@
 use crate::extension::SourceSpanExt;
-use crate::lexer::token_kind::Kw::Fn;
 use crate::parser::ast::{AstNode, Ident};
 use crate::resolver::DefId;
 use crate::resolver::ribs::Res;

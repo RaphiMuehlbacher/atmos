@@ -2,14 +2,17 @@ use crate::Session;
 use crate::ast_lowerer::hir::{self, BlockExpr, FnDecl, FnSig, HirId, HirNode, Item, Node, Pattern, Stmt};
 use crate::resolver::DefId;
 use crate::resolver::defs::DefKind;
-use crate::resolver::ribs::Res;
+use crate::resolver::ribs::{PrimTy, Res};
+use crate::resolver::DefId;
 use crate::type_checker::ty::{self, CollectedTypes, GenericArg, GenericArgs, GenericParamDef, Ty, TyVarId};
+use crate::Session;
+use std::assert_matches;
 use std::collections::HashMap;
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct InferCtxt {
     type_var_map: HashMap<TyVarId, Ty>,
-    locals: HashMap<HirId, Ty>,
+    types: HashMap<HirId, Ty>,
     current_ty_var: u32,
 }
 
@@ -63,7 +66,6 @@ impl<'hir> TypeChecker<'hir> {
 
         for (param, param_ty) in sig.node.params.iter().zip(fn_sig_ty.params.clone()) {
             self.check_pattern(&param.node.pattern, param_ty);
-            // self.infer_ctxt.locals.insert(param.hir_id, param_ty.clone());
         }
 
         self.check_block(body);
@@ -78,6 +80,12 @@ impl<'hir> TypeChecker<'hir> {
                         .ty
                         .as_ref()
                         .map_or(self.infer_ctxt.next_ty_var(), |ty| self.lower_ty(ty));
+
+                    if let Some(expr) = &let_stmt.expr {
+                        let expr_ty = self.check_expression(expr);
+                        self.unify(expr_ty, expected.clone());
+                    }
+
                     self.check_pattern(&let_stmt.pattern, expected);
                 }
                 Stmt::Item(item) => todo!(),
@@ -97,20 +105,37 @@ impl<'hir> TypeChecker<'hir> {
                 }
                 expected
             }
-            Pattern::Path(path) => panic!("path in this position not valid, {path:?}"),
+            Pattern::Path(path) => match &path.node {
+                hir::Path::Resolved { res, segments } => {
+                    if segments.len() == 1 {
+                        assert_matches!(res, Res::Local(_));
+                        expected
+                    } else {
+                        todo!()
+                    }
+                }
+                hir::Path::Unresolved {
+                    res,
+                    resolved_segments,
+                    unresolved_segments,
+                } => todo!(),
+            },
             Pattern::Struct(path, pattern_struct_field) => todo!(),
             Pattern::TupleStruct(path, patterns) => todo!(),
             Pattern::Tuple(patterns) => {
                 let elements_ty: Vec<Ty> = (0..patterns.len()).map(|_| self.infer_ctxt.next_ty_var()).collect();
-                for (i, pattern) in patterns.iter().enumerate() {
-                    self.check_pattern(pattern, elements_ty[i].clone());
+                let tuple_ty = Ty::Tuple(elements_ty.clone());
+
+                self.unify(tuple_ty.clone(), expected);
+                for (pattern, element) in patterns.iter().zip(elements_ty) {
+                    self.check_pattern(pattern, element);
                 }
-                Ty::Tuple(elements_ty)
+                tuple_ty
             }
             Pattern::Expr(expr) => todo!(),
             Pattern::Err => todo!(),
         };
-        self.infer_ctxt.locals.insert(pattern.hir_id, ty);
+        self.infer_ctxt.types.insert(pattern.hir_id, ty);
     }
 
     fn lower_ty(&self, hir_ty: &HirNode<hir::Ty>) -> Ty {
@@ -192,7 +217,13 @@ impl<'hir> TypeChecker<'hir> {
                 DefKind::Function => todo!(),
             },
             Res::Local(ast_id) => todo!(),
-            Res::PrimTy(prim_ty) => todo!(),
+            Res::PrimTy(prim_ty) => match prim_ty {
+                PrimTy::I32 => ty::Ty::I32,
+                PrimTy::U32 => ty::Ty::U32,
+                PrimTy::F64 => ty::Ty::F64,
+                PrimTy::Bool => ty::Ty::Bool,
+                PrimTy::Str => ty::Ty::Str,
+            },
             Res::SelfTy(self_ty_info) => todo!(),
             Res::Err => todo!(),
         }
@@ -275,6 +306,77 @@ impl<'hir> TypeChecker<'hir> {
         match generic_arg {
             GenericArg::Type(ty) => GenericArg::Type(self.instantiate(ty, substs)),
             GenericArg::Const(_) => todo!(),
+        }
+    }
+
+    fn check_expression(&self, expr: &HirNode<hir::Expr>) -> Ty {
+        match &expr.node {
+            hir::Expr::Array(hir_nodes) => todo!(),
+            hir::Expr::Struct(struct_expr) => todo!(),
+            hir::Expr::Call(call_expr) => todo!(),
+            hir::Expr::MethodCall(method_call_expr) => todo!(),
+            hir::Expr::Tuple(tuple_expr) => {
+                Ty::Tuple(tuple_expr.iter().map(|expr| self.check_expression(expr)).collect())
+            }
+            hir::Expr::Cast(cast_expr) => todo!(),
+            hir::Expr::Return(hir_node) => todo!(),
+            hir::Expr::Loop(loop_expr) => todo!(),
+            hir::Expr::Assign(assign_expr) => todo!(),
+            hir::Expr::Field(field_expr) => todo!(),
+            hir::Expr::Index(index_expr) => todo!(),
+            hir::Expr::Path(hir_node) => todo!(),
+            hir::Expr::AddrOf(hir_node) => todo!(),
+            hir::Expr::Break(hir_node) => todo!(),
+            hir::Expr::Continue => todo!(),
+            hir::Expr::Literal(literal) => match literal {
+                hir::Literal::Bool(_) => Ty::Bool,
+                hir::Literal::I32(_) => Ty::I32,
+                hir::Literal::U32(_) => Ty::U32,
+                hir::Literal::F64(_) => Ty::F64,
+                hir::Literal::Str(_) => Ty::Str,
+                hir::Literal::Unit => Ty::Unit,
+            },
+            hir::Expr::Binary(binary_expr) => todo!(),
+            hir::Expr::Unary(unary_expr) => todo!(),
+            hir::Expr::If(if_expr) => todo!(),
+            hir::Expr::Block(hir_node) => todo!(),
+            hir::Expr::Match(match_expr) => todo!(),
+            hir::Expr::Let(let_expr) => todo!(),
+            hir::Expr::Err => todo!(),
+        }
+    }
+
+    fn unify(&mut self, found: Ty, expected: Ty) {
+        let found = self.shallow_resolve(found);
+        let expected = self.shallow_resolve(expected);
+
+        dbg!(&found, &expected);
+
+        match (found, expected) {
+            (Ty::I32, Ty::I32)
+            | (Ty::U32, Ty::U32)
+            | (Ty::F64, Ty::F64)
+            | (Ty::Str, Ty::Str)
+            | (Ty::Bool, Ty::Bool)
+            | (Ty::Unit, Ty::Unit) => {}
+            (Ty::TyVar(id), ty) | (ty, Ty::TyVar(id)) => {
+                self.infer_ctxt.type_var_map.insert(id, ty);
+            }
+            (Ty::Tuple(found_tys), Ty::Tuple(expected_tys)) => {
+                for (found, expected) in found_tys.into_iter().zip(expected_tys) {
+                    self.unify(found, expected);
+                }
+            }
+            _ => todo!(),
+        }
+    }
+
+    fn shallow_resolve(&self, ty: Ty) -> Ty {
+        match ty {
+            Ty::TyVar(ty_var) if let Some(ty) = self.infer_ctxt.type_var_map.get(&ty_var) => {
+                self.shallow_resolve(ty.clone())
+            }
+            _ => ty,
         }
     }
 }
