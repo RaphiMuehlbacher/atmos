@@ -618,15 +618,13 @@ impl<'ast> AstLowerer<'ast> {
             .collect();
 
         let expr = match stmts.last().map(|stmt| &stmt.node) {
-            Some(ast::Stmt::Expr(expr)) => {
+            Some(hir::Stmt::Expr(expr)) => {
                 let expr = expr.clone();
                 stmts.pop();
-                Some(Box::new(self.lower_expr(&expr)))
+                Some(Box::new(expr))
             }
             _ => None,
         };
-
-        let stmts = stmts.into_iter().map(|stmt| self.lower_stmt(stmt)).collect();
 
         let hir_node = HirNode::new(hir::BlockExpr { stmts, expr }, block.span);
         self.insert_node(hir_node.hir_id, hir::Node::Block(hir_node.clone()));
