@@ -352,7 +352,19 @@ impl<'hir> TypeChecker<'hir> {
                     {
                         self.infer_ctxt.types.get(hir_id).unwrap().clone()
                     } else {
-                        todo!()
+                        match res {
+                            Res::Local(_) => todo!(),
+                            // TODO: for now only for structs
+                            Res::Def(def_id, DefKind::Struct) => {
+                                let ty = self.collected_types.type_of.get(def_id).unwrap();
+                                // TODO: for now without generics
+                                Ty::Struct(*def_id, vec![])
+                            }
+                            Res::Def(def_id, def_kind) => todo!(),
+                            Res::PrimTy(prim_ty) => todo!(),
+                            Res::SelfTy(self_ty_info) => todo!(),
+                            Res::Err => todo!(),
+                        }
                     }
                 }
                 hir::Path::Unresolved {
@@ -431,6 +443,13 @@ impl<'hir> TypeChecker<'hir> {
                 for (found, expected) in found_tys.into_iter().zip(expected_tys) {
                     self.unify(found, expected);
                 }
+            }
+            (Ty::Struct(found_def_id, found_generics), Ty::Struct(expected_def_id, expected_generics))
+                if found_def_id == expected_def_id =>
+            {
+                // TODO: handle generics by unifying them pairwise
+                assert!(found_generics.is_empty());
+                assert!(expected_generics.is_empty());
             }
             (found, expected) => panic!("unification failed: found: {found:?}, expected: {expected:?}"),
         }
