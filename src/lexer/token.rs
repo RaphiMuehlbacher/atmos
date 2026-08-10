@@ -26,6 +26,7 @@ impl Token {
                 | TokenKind::Punctuation(Punct::Star)
                 | TokenKind::OpeningDelimiter(_)
                 | TokenKind::Punctuation(Punct::Ampersand)
+                | TokenKind::Ident(_)
         )
     }
 

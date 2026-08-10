@@ -33,6 +33,7 @@ pub struct TypeChecker<'hir> {
     def_to_hir: &'hir HashMap<DefId, HirId>,
     hir_nodes: &'hir HashMap<HirId, Node>,
     infer_ctxt: InferCtxt,
+    return_ty: Option<Ty>,
 }
 
 impl<'hir> TypeChecker<'hir> {
@@ -48,6 +49,7 @@ impl<'hir> TypeChecker<'hir> {
             hir_nodes,
             collected_types,
             infer_ctxt: InferCtxt::default(),
+            return_ty: None,
         }
     }
 
@@ -65,17 +67,26 @@ impl<'hir> TypeChecker<'hir> {
     }
 
     fn check_fn(&mut self, def_id: DefId, sig: &HirNode<FnSig>, body: &HirNode<BlockExpr>) {
-        let fn_sig_ty = self.collected_types.fn_sig.get(&def_id).unwrap();
+        let fn_sig_ty = self.collected_types.fn_sig.get(&def_id).unwrap().clone();
 
-        for (param, param_ty) in sig.node.params.iter().zip(fn_sig_ty.params.clone()) {
+        for (param, param_ty) in sig.node.params.iter().zip(fn_sig_ty.params) {
             self.check_pattern(&param.node.pattern, param_ty);
         }
 
-        self.check_block(body);
-        todo!()
+        let prev_return_ty = self.return_ty.take();
+        self.return_ty = Some(fn_sig_ty.return_ty.clone());
+
+        self.check_block_with_expectation(body, fn_sig_ty.return_ty);
+
+        self.return_ty = prev_return_ty;
     }
 
     fn check_block(&mut self, block: &HirNode<BlockExpr>) -> Ty {
+        let ty_var = self.infer_ctxt.next_ty_var();
+        self.check_block_with_expectation(block, ty_var)
+    }
+
+    fn check_block_with_expectation(&mut self, block: &HirNode<BlockExpr>, expected: Ty) -> Ty {
         for stmt in &block.node.stmts {
             match &stmt.node {
                 Stmt::Let(let_stmt) => {
@@ -98,11 +109,15 @@ impl<'hir> TypeChecker<'hir> {
             }
         }
 
-        block
-            .node
-            .expr
-            .as_ref()
-            .map_or(Ty::Unit, |expr| self.check_expression(&expr))
+        match &block.node.expr {
+            Some(expr) => {
+                let ty = self.check_expression(expr);
+                self.unify(ty.clone(), expected);
+                ty
+            }
+            // TODO: fix when implementing divergence
+            None => Ty::Never,
+        }
     }
 
     fn check_pattern(&mut self, pattern: &HirNode<Pattern>, expected: Ty) {
@@ -316,7 +331,11 @@ impl<'hir> TypeChecker<'hir> {
                 Ty::Tuple(tuple_expr.iter().map(|expr| self.check_expression(expr)).collect())
             }
             hir::Expr::Cast(cast_expr) => todo!(),
-            hir::Expr::Return(hir_node) => todo!(),
+            hir::Expr::Return(expr) => {
+                let return_ty = expr.as_ref().map_or(Ty::Unit, |expr| self.check_expression(expr));
+                self.unify(return_ty, self.return_ty.clone().unwrap());
+                Ty::Never
+            }
             hir::Expr::Loop(loop_expr) => todo!(),
             hir::Expr::Assign(assign_expr) => {
                 let lhs = self.check_expression(&assign_expr.lhs);
@@ -357,6 +376,7 @@ impl<'hir> TypeChecker<'hir> {
                 hir::Literal::Unit => Ty::Unit,
             },
             hir::Expr::Binary(binary_expr) => {
+                // TODO: change to overloadable trait
                 let lhs = self.check_expression(&binary_expr.lhs);
                 let rhs = self.check_expression(&binary_expr.rhs);
                 self.unify(lhs.clone(), rhs);
@@ -386,8 +406,6 @@ impl<'hir> TypeChecker<'hir> {
         let found = self.shallow_resolve(found);
         let expected = self.shallow_resolve(expected);
 
-        // dbg!(&found, &expected);
-
         match (found, expected) {
             (Ty::I32, Ty::I32)
             | (Ty::U32, Ty::U32)
@@ -414,7 +432,7 @@ impl<'hir> TypeChecker<'hir> {
                     self.unify(found, expected);
                 }
             }
-            _ => panic!("unification failed"),
+            (found, expected) => panic!("unification failed: found: {found:?}, expected: {expected:?}"),
         }
     }
 
