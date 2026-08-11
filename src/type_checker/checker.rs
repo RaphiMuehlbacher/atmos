@@ -368,7 +368,23 @@ impl<'hir> TypeChecker<'hir> {
                 }
                 _ => panic!("shouldn't be possible"),
             },
-            hir::Expr::Call(call_expr) => todo!(),
+            hir::Expr::Call(call_expr) => {
+                let callee = self.check_expression(&call_expr.callee);
+
+                let Ty::Fn(def_id, _) = callee else { panic!() };
+                let fn_sig = self.collected_types.fn_sig.get(&def_id).unwrap().clone();
+
+                if call_expr.args.len() != fn_sig.params.len() {
+                    panic!("emit error for arity");
+                }
+
+                for (arg, param) in call_expr.args.iter().zip(&fn_sig.params) {
+                    let arg_ty = self.check_expression(arg);
+                    self.unify(arg_ty, param.clone());
+                }
+
+                fn_sig.return_ty
+            }
             hir::Expr::MethodCall(method_call_expr) => todo!(),
             hir::Expr::Tuple(tuple_expr) => {
                 Ty::Tuple(tuple_expr.iter().map(|expr| self.check_expression(expr)).collect())
@@ -411,11 +427,15 @@ impl<'hir> TypeChecker<'hir> {
                     } else {
                         match res {
                             Res::Local(_) => todo!(),
-                            // TODO: for now only for structs
                             Res::Def(def_id, DefKind::Struct) => {
                                 let ty = self.collected_types.type_of.get(def_id).unwrap();
                                 // TODO: for now without generics
                                 Ty::Struct(*def_id, vec![])
+                            }
+                            Res::Def(def_id, DefKind::Function) => {
+                                let ty = self.collected_types.type_of.get(def_id).unwrap();
+                                // TODO: for now without generics
+                                Ty::Fn(*def_id, vec![])
                             }
                             Res::Def(def_id, def_kind) => todo!(),
                             Res::PrimTy(prim_ty) => todo!(),

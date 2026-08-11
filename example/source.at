@@ -1,14 +1,8 @@
-struct Person {
-    age: i32,
+fn main() {
+    foo(3, 4)
 }
 
-fn main() -> i32 {
-    let p = Person {
-        age: 3,
-    };
-    let a = p.age;
-    return a;
-}
+fn foo(a: i32) {}
 
 /*
 struct S<T>(T);
