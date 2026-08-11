@@ -1,15 +1,13 @@
 struct Person {
     age: i32,
-    name: u32,
 }
 
-fn main() -> Person {
-    let x = 3;
+fn main() -> i32 {
     let p = Person {
-        age: x,
-        name: 3,
+        age: 3,
     };
-    return p;
+    let a = p.age;
+    return a;
 }
 
 /*

@@ -66,6 +66,14 @@ pub enum InferTy {
     IntVar(TyVarId),
 }
 
+impl InferTy {
+    pub fn ty_var(&self) -> TyVarId {
+        match self {
+            InferTy::TyVar(ty_var_id) | InferTy::IntVar(ty_var_id) => *ty_var_id,
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Variant {
     pub def_id: DefId,

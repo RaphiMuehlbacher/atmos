@@ -386,7 +386,21 @@ impl<'hir> TypeChecker<'hir> {
                 self.unify(lhs.clone(), rhs);
                 lhs
             }
-            hir::Expr::Field(field_expr) => todo!(),
+            hir::Expr::Field(field_expr) => {
+                let base = self.check_expression(&field_expr.base);
+                let base = self.deeply_resolve(base);
+
+                let Ty::Struct(def_id, _) = base else { panic!() };
+                let fields = &self.collected_types.structs.get(&def_id).unwrap().fields;
+
+                let field_def_id = fields
+                    .iter()
+                    .find(|field| field.ident == field_expr.field.node)
+                    .expect("emit error for field not found")
+                    .def_id;
+
+                self.collected_types.type_of.get(&field_def_id).unwrap().clone()
+            }
             hir::Expr::Index(index_expr) => todo!(),
             hir::Expr::Path(path) => match &path.node {
                 hir::Path::Resolved { res, segments } => {
@@ -507,5 +521,42 @@ impl<'hir> TypeChecker<'hir> {
             }
             _ => ty,
         }
+    }
+
+    fn deeply_resolve(&self, ty: Ty) -> Ty {
+        let ty = self.shallow_resolve(ty);
+
+        match ty {
+            Ty::Array(ty, expr) => Ty::Array(Box::new(self.deeply_resolve(*ty)), expr),
+            Ty::Slice(ty) => Ty::Slice(Box::new(self.deeply_resolve(*ty))),
+            Ty::Tuple(types) => Ty::Tuple(types.into_iter().map(|ty| self.deeply_resolve(ty)).collect()),
+            Ty::Ptr(ty) => Ty::Ptr(Box::new(self.deeply_resolve(*ty))),
+            Ty::FnPtr(params, return_ty) => {
+                let params = params.into_iter().map(|param| self.deeply_resolve(param)).collect();
+                let return_ty = Box::new(self.deeply_resolve(*return_ty));
+                Ty::FnPtr(params, return_ty)
+            }
+            Ty::Fn(def_id, args) => Ty::Fn(def_id, self.deeply_resolve_args(args)),
+            Ty::Struct(def_id, args) => Ty::Struct(def_id, self.deeply_resolve_args(args)),
+            Ty::Enum(def_id, args) => Ty::Enum(def_id, self.deeply_resolve_args(args)),
+            Ty::InherentTyAlias {
+                candidates,
+                ident,
+                resolved_args,
+                unresolved_args,
+            } => todo!(),
+            Ty::Err => panic!(),
+            Ty::Unit | Ty::Bool | Ty::I32 | Ty::U32 | Ty::F64 | Ty::Str | Ty::Never | Ty::GenericParam(_) => ty,
+            Ty::Infer(_) => panic!("type annotations needed"),
+        }
+    }
+
+    fn deeply_resolve_args(&self, args: GenericArgs) -> GenericArgs {
+        args.into_iter()
+            .map(|arg| match arg {
+                GenericArg::Type(ty) => GenericArg::Type(self.deeply_resolve(ty)),
+                GenericArg::Const(_) => todo!(),
+            })
+            .collect()
     }
 }
