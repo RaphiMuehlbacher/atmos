@@ -1,10 +1,11 @@
 use crate::Session;
-use crate::ast_lowerer::hir::{self, BlockExpr, FnDecl, FnSig, HirId, HirNode, Item, Node, Pattern, Stmt};
+use crate::ast_lowerer::hir::{self, BlockExpr, FnDecl, FnSig, HirId, HirNode, Item, Node, Path, Pattern, Stmt};
+use crate::parser::ast::Ident;
 use crate::resolver::DefId;
 use crate::resolver::defs::DefKind;
 use crate::resolver::ribs::{PrimTy, Res};
 use crate::type_checker::ty::{self, CollectedTypes, GenericArg, GenericArgs, GenericParamDef, InferTy, Ty, TyVarId};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 #[derive(Default, Debug)]
 pub struct InferCtxt {
@@ -324,7 +325,49 @@ impl<'hir> TypeChecker<'hir> {
     fn check_expression(&mut self, expr: &HirNode<hir::Expr>) -> Ty {
         match &expr.node {
             hir::Expr::Array(hir_nodes) => todo!(),
-            hir::Expr::Struct(struct_expr) => todo!(),
+            hir::Expr::Struct(struct_expr) => match &struct_expr.path.node {
+                Path::Resolved {
+                    res: Res::Def(def_id, DefKind::Struct),
+                    segments,
+                } => {
+                    let struct_ty = self.collected_types.structs.get(def_id).unwrap().clone();
+                    let struct_fields: HashMap<_, _> = struct_ty
+                        .fields
+                        .into_iter()
+                        .map(|field| {
+                            (
+                                field.ident,
+                                self.collected_types.type_of.get(&field.def_id).unwrap().clone(),
+                            )
+                        })
+                        .collect();
+
+                    let mut seen = HashSet::<&Ident>::new();
+                    for field_expr in &struct_expr.fields {
+                        let ident = &field_expr.node.ident.node;
+
+                        let field_ty = struct_fields
+                            .get(ident)
+                            .expect("todo: emit error for no such field")
+                            .clone();
+
+                        if seen.contains(ident) {
+                            todo!("emit error for field specified more than once");
+                        }
+                        seen.insert(ident);
+
+                        let found_ty = self.check_expression(&field_expr.node.expr);
+                        self.unify(found_ty, field_ty);
+                    }
+
+                    for _ in struct_fields.keys().filter(|ident| !seen.contains(ident)) {
+                        todo!("emit error for missing field")
+                    }
+                    // TODO: for now without generics
+                    Ty::Struct(*def_id, vec![])
+                }
+                _ => panic!("shouldn't be possible"),
+            },
             hir::Expr::Call(call_expr) => todo!(),
             hir::Expr::MethodCall(method_call_expr) => todo!(),
             hir::Expr::Tuple(tuple_expr) => {

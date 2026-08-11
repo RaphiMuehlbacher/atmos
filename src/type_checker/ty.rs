@@ -69,7 +69,7 @@ pub enum InferTy {
 #[derive(Clone, Debug)]
 pub struct Variant {
     pub def_id: DefId,
-    pub fields: Vec<DefId>,
+    pub fields: Vec<StructField>,
 }
 
 #[derive(Debug, Clone)]
@@ -81,7 +81,13 @@ pub struct FnSig {
 #[derive(Debug, Clone)]
 pub struct StructDef {
     pub def_id: DefId,
-    pub fields: Vec<DefId>,
+    pub fields: Vec<StructField>,
+}
+
+#[derive(Debug, Clone)]
+pub struct StructField {
+    pub ident: Ident,
+    pub def_id: DefId,
 }
 
 #[derive(Debug, Clone)]

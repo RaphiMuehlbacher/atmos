@@ -1,7 +1,15 @@
-fn main() {
-    let (a, b) = (1, 2);
-    let c: i32 = a;
-    let d: u32 = a;
+struct Person {
+    age: i32,
+    name: u32,
+}
+
+fn main() -> Person {
+    let x = 3;
+    let p = Person {
+        age: x,
+        name: 3,
+    };
+    return p;
 }
 
 /*

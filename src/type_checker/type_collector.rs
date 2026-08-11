@@ -8,7 +8,8 @@ use crate::resolver::defs::DefKind;
 use crate::resolver::ribs::{PrimTy, Res, SelfTyInfo};
 use crate::type_checker::error::TypeCheckerError;
 use crate::type_checker::ty::{
-    self, AssocItemDef, CollectedTypes, EnumDef, FnSig, GenericArg, GenericArgs, Generics, StructDef, Variant,
+    self, AssocItemDef, CollectedTypes, EnumDef, FnSig, GenericArg, GenericArgs, Generics, StructDef, StructField,
+    Variant,
 };
 use std::collections::HashMap;
 
@@ -302,7 +303,7 @@ impl<'hir> TypeCollector<'hir> {
             .collect()
     }
 
-    fn collect_fields(&mut self, variant: &HirNode<hir::VariantData>) -> Vec<DefId> {
+    fn collect_fields(&mut self, variant: &HirNode<hir::VariantData>) -> Vec<StructField> {
         match &variant.node {
             hir::VariantData::Unit => vec![],
             hir::VariantData::Struct { fields } | hir::VariantData::Tuple { fields } => fields
@@ -310,7 +311,10 @@ impl<'hir> TypeCollector<'hir> {
                 .map(|field| {
                     let field_ty = self.lower_ty(&field.node.ty);
                     self.collected_types.type_of.insert(field.node.def_id, field_ty);
-                    field.node.def_id
+                    StructField {
+                        ident: field.node.ident.node.clone(),
+                        def_id: field.node.def_id,
+                    }
                 })
                 .collect(),
         }
