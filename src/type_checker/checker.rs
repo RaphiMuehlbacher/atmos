@@ -371,19 +371,43 @@ impl<'hir> TypeChecker<'hir> {
             hir::Expr::Call(call_expr) => {
                 let callee = self.check_expression(&call_expr.callee);
 
-                let Ty::Fn(def_id, _) = callee else { panic!() };
-                let fn_sig = self.collected_types.fn_sig.get(&def_id).unwrap().clone();
+                match callee {
+                    Ty::Fn(def_id, _) => {
+                        let fn_sig = self.collected_types.fn_sig.get(&def_id).unwrap().clone();
 
-                if call_expr.args.len() != fn_sig.params.len() {
-                    panic!("emit error for arity");
+                        if call_expr.args.len() != fn_sig.params.len() {
+                            panic!("emit error for arity");
+                        }
+
+                        for (arg, param) in call_expr.args.iter().zip(&fn_sig.params) {
+                            let arg_ty = self.check_expression(arg);
+                            self.unify(arg_ty, param.clone());
+                        }
+
+                        fn_sig.return_ty
+                    }
+                    Ty::Struct(def_id, _) => {
+                        let struct_def = self.collected_types.structs.get(&def_id).unwrap().clone();
+
+                        let fields: Vec<_> = struct_def
+                            .fields
+                            .iter()
+                            .map(|field| self.collected_types.type_of.get(&field.def_id).unwrap().clone())
+                            .collect();
+
+                        if call_expr.args.len() != fields.len() {
+                            panic!("emit error for arity");
+                        }
+
+                        for (arg, field) in call_expr.args.iter().zip(fields) {
+                            let arg_ty = self.check_expression(arg);
+                            self.unify(arg_ty, field);
+                        }
+
+                        self.collected_types.type_of.get(&def_id).unwrap().clone()
+                    }
+                    _ => panic!("emit error for type mismatch: not callable"),
                 }
-
-                for (arg, param) in call_expr.args.iter().zip(&fn_sig.params) {
-                    let arg_ty = self.check_expression(arg);
-                    self.unify(arg_ty, param.clone());
-                }
-
-                fn_sig.return_ty
             }
             hir::Expr::MethodCall(method_call_expr) => todo!(),
             hir::Expr::Tuple(tuple_expr) => {

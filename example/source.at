@@ -1,8 +1,8 @@
-fn main() {
-    foo(3, 4)
-}
+struct Tup(i32, bool);
 
-fn foo(a: i32) {}
+fn main() {
+    let a = Tup(3, true);
+}
 
 /*
 struct S<T>(T);
