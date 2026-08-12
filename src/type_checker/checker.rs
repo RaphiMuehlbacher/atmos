@@ -406,7 +406,9 @@ impl<'hir> TypeChecker<'hir> {
                 let base = self.check_expression(&field_expr.base);
                 let base = self.deeply_resolve(base);
 
-                let Ty::Struct(def_id, _) = base else { panic!() };
+                let Ty::Struct(def_id, _) = base else {
+                    panic!("emit error for type mismatch: expected struct found {base:?}")
+                };
                 let fields = &self.collected_types.structs.get(&def_id).unwrap().fields;
 
                 let field_def_id = fields
@@ -566,8 +568,15 @@ impl<'hir> TypeChecker<'hir> {
                 unresolved_args,
             } => todo!(),
             Ty::Err => panic!(),
-            Ty::Unit | Ty::Bool | Ty::I32 | Ty::U32 | Ty::F64 | Ty::Str | Ty::Never | Ty::GenericParam(_) => ty,
-            Ty::Infer(_) => panic!("type annotations needed"),
+            Ty::Unit
+            | Ty::Bool
+            | Ty::I32
+            | Ty::U32
+            | Ty::F64
+            | Ty::Str
+            | Ty::Never
+            | Ty::GenericParam(_)
+            | Ty::Infer(_) => ty,
         }
     }
 
