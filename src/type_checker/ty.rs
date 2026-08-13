@@ -60,6 +60,15 @@ pub enum Ty {
     Err,
 }
 
+impl Ty {
+    pub fn struct_def(self) -> Option<(DefId, GenericArgs)> {
+        match self {
+            Ty::Struct(def_id, generic_args) => Some((def_id, generic_args)),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum InferTy {
     TyVar(TyVarId),

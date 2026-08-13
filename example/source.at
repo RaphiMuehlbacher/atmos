@@ -1,8 +1,19 @@
-struct Tup(i32, bool);
+struct Wrapper<T, U> {
+    inner: T
+    other: U,
+    both: (T, U),
+}
 
 fn main() {
-    let a = Tup(3, true);
+    let a: Wrapper<bool, u32> = Wrapper {
+        inner: true,
+        other: 3,
+        both: (false, 5),
+    };
+
+    let b: (bool, u32) = a.both;
 }
+
 
 /*
 struct S<T>(T);
