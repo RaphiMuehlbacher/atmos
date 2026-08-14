@@ -1,24 +1,42 @@
-struct Wrapper<T> {
-    inner: T
+struct Pair<T, U> {
+    first: T,
+    second: U,
 }
 
-fn test(wrapper: Wrapper<bool>) {}
+fn first<T, U>(pair: Pair<T, U>) -> T {
+    pair.first
+}
+
+fn second<T, U>(pair: Pair<T, U>) -> U {
+    pair.second
+}
+
+fn transform<T, U>(
+    x: Pair<T, U>,
+    y: Pair<U, T>
+) -> Pair<Pair<T, U>, Pair<U, T>> {
+    Pair {
+        first: x,
+        second: y,
+    }
+}
 
 fn main() {
-    let a: Wrapper<bool> = Wrapper {
-        inner: true,
+    let pair = Pair {
+        first: 3,
+        second: false,
     };
 
-    test(a);
+    let pair2 = Pair {
+        first: true,
+        second: 4,
+    };
+
+    let first_: u32 = first(pair);
+    let second_: u32 = second(pair2);
+    let transformated: Pair<Pair<u32, bool>, Pair<bool, u32>> = transform(pair, pair2);
+    let inner_second: bool = second(first(transformated));
 }
-
-
-/*
-struct S<T>(T);
-
-fn test(a: S<i32>) {
-}
-*/
 
 /*
 struct Person<T>;

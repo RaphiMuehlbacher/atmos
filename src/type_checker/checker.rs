@@ -175,26 +175,13 @@ impl<'hir> TypeChecker<'hir> {
     fn lower_resolved_ty(&mut self, res: &Res, segments: &[HirNode<hir::PathSegment>]) -> Ty {
         match res {
             Res::Def(def_id, def_kind) => match def_kind {
-                DefKind::Struct => self.resolve_struct_path(*def_id, segments),
+                DefKind::Struct => {
+                    let args = self.lower_generic_args(*def_id, segments);
+                    Ty::Struct(*def_id, args)
+                }
                 DefKind::Enum => {
-                    let (last_segment, leading_segments) = segments.split_last().unwrap();
-                    // resolved paths can only have modules as leading segments
-                    // e.g. S<i32>::Assoc<u32> is not possible
-                    self.prohibit_generic_args(leading_segments);
-
-                    let generics = self.generics_of(*def_id);
-                    let generic_args = self.generic_args(last_segment);
-                    assert_eq!(generics.len(), generic_args.len());
-
-                    for (arg, param) in generics.iter().zip(&generic_args) {
-                        match (&arg.kind, param) {
-                            (ty::GenericParamKind::Type, GenericArg::Type(_)) => {}
-                            (ty::GenericParamKind::Const, GenericArg::Const(_)) => {}
-                            _ => panic!("emit error"),
-                        }
-                    }
-
-                    Ty::Enum(*def_id, generic_args)
+                    let args = self.lower_generic_args(*def_id, segments);
+                    Ty::Enum(*def_id, args)
                 }
                 DefKind::StructField => todo!(),
                 DefKind::EnumVariant => todo!(),
@@ -223,7 +210,21 @@ impl<'hir> TypeChecker<'hir> {
         }
     }
 
-    fn resolve_struct_path(&mut self, def_id: DefId, segments: &[HirNode<hir::PathSegment>]) -> Ty {
+    fn generics_of(&self, def_id: DefId) -> Vec<GenericParamDef> {
+        let self_generics = self.collected_types.generics_of.get(&def_id).unwrap();
+        let mut generics = self_generics.params.clone();
+        if let Some(parent_def_id) = self_generics.parent {
+            let parent_generics = self.collected_types.generics_of.get(&parent_def_id).unwrap();
+            assert_eq!(
+                parent_generics.parent, None,
+                "We only support associated items nested one level"
+            );
+            generics.append(&mut parent_generics.params.clone());
+        }
+        generics
+    }
+
+    fn lower_generic_args(&mut self, def_id: DefId, segments: &[HirNode<hir::PathSegment>]) -> GenericArgs {
         let (last_segment, leading_segments) = segments.split_last().unwrap();
         // resolved paths can only have modules as leading segments
         // e.g. S<i32>::Assoc<u32> is not possible
@@ -232,7 +233,7 @@ impl<'hir> TypeChecker<'hir> {
         let generics = self.generics_of(def_id);
         let generic_args = self.generic_args(last_segment);
 
-        let generic_args = match generic_args.len() {
+        match generic_args.len() {
             n if n == generics.len() => {
                 for (arg, param) in generics.iter().zip(&generic_args) {
                     match (&arg.kind, param) {
@@ -248,25 +249,8 @@ impl<'hir> TypeChecker<'hir> {
                 .map(|_| GenericArg::Type(self.infer_ctxt.next_ty_var()))
                 .collect(),
             _ => panic!("emit error: generic parameter arity does not match"),
-        };
-
-        Ty::Struct(def_id, generic_args)
-    }
-
-    fn generics_of(&self, def_id: DefId) -> Vec<GenericParamDef> {
-        let self_generics = self.collected_types.generics_of.get(&def_id).unwrap();
-        let mut generics = self_generics.params.clone();
-        if let Some(parent_def_id) = self_generics.parent {
-            let parent_generics = self.collected_types.generics_of.get(&parent_def_id).unwrap();
-            assert_eq!(
-                parent_generics.parent, None,
-                "We only support associated items nested one level"
-            );
-            generics.append(&mut parent_generics.params.clone());
         }
-        generics
     }
-
     fn generic_args(&mut self, segment: &HirNode<hir::PathSegment>) -> GenericArgs {
         let mut args = vec![];
         for arg in &segment.node.args {
@@ -338,13 +322,13 @@ impl<'hir> TypeChecker<'hir> {
 
     fn check_expression(&mut self, expr: &HirNode<hir::Expr>) -> Ty {
         match &expr.node {
-            hir::Expr::Array(hir_nodes) => todo!(),
+            hir::Expr::Array(exprs) => todo!(),
             hir::Expr::Struct(struct_expr) => match &struct_expr.path.node {
                 Path::Resolved {
                     res: Res::Def(def_id, DefKind::Struct),
                     segments,
                 } => {
-                    let (_, args) = self.resolve_struct_path(*def_id, segments).struct_def().unwrap();
+                    let args = self.lower_generic_args(*def_id, segments);
 
                     let struct_def = self.collected_types.structs.get(def_id).unwrap().clone();
                     let struct_fields: HashMap<_, _> = struct_def
@@ -389,7 +373,7 @@ impl<'hir> TypeChecker<'hir> {
                 let callee = self.check_expression(&call_expr.callee);
 
                 match callee {
-                    Ty::Fn(def_id, _) => {
+                    Ty::Fn(def_id, generic_args) => {
                         let fn_sig = self.collected_types.fn_sig.get(&def_id).unwrap().clone();
 
                         if call_expr.args.len() != fn_sig.params.len() {
@@ -398,10 +382,11 @@ impl<'hir> TypeChecker<'hir> {
 
                         for (arg, param) in call_expr.args.iter().zip(&fn_sig.params) {
                             let arg_ty = self.check_expression(arg);
+                            let param = self.instantiate(param, &generic_args);
                             self.unify(arg_ty, param.clone());
                         }
 
-                        fn_sig.return_ty
+                        self.instantiate(&fn_sig.return_ty, &generic_args)
                     }
                     Ty::Struct(def_id, _) => {
                         let struct_def = self.collected_types.structs.get(&def_id).unwrap().clone();
@@ -476,8 +461,8 @@ impl<'hir> TypeChecker<'hir> {
                                 Ty::Struct(*def_id, vec![])
                             }
                             Res::Def(def_id, DefKind::Function) => {
-                                // TODO: for now without generics
-                                Ty::Fn(*def_id, vec![])
+                                let args = self.lower_generic_args(*def_id, segments);
+                                Ty::Fn(*def_id, args)
                             }
                             Res::Def(def_id, def_kind) => todo!(),
                             Res::PrimTy(prim_ty) => {
@@ -574,6 +559,13 @@ impl<'hir> TypeChecker<'hir> {
                         (GenericArg::Const(_), GenericArg::Const(_)) => todo!(),
                         _ => panic!("should be filtered out before"),
                     }
+                }
+            }
+            (Ty::GenericParam(found_idx), Ty::GenericParam(expected_idx)) => {
+                if found_idx != expected_idx {
+                    panic!(
+                        "unification failed: found: GenericParam({found_idx}), expected: GenericParam({expected_idx})"
+                    );
                 }
             }
             (found, expected) => panic!("unification failed: found: {found:?}, expected: {expected:?}"),
