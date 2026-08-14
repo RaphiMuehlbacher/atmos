@@ -303,6 +303,16 @@ impl<'hir> TypeCollector<'hir> {
             .collect()
     }
 
+    fn lower_generic_args(&self, generic_args: &[HirNode<hir::GenericArg>]) -> ty::GenericArgs {
+        generic_args
+            .iter()
+            .map(|arg| match &arg.node {
+                hir::GenericArg::Type(ty) => GenericArg::Type(self.lower_ty(ty)),
+                hir::GenericArg::Const(_) => todo!(),
+            })
+            .collect()
+    }
+
     fn collect_fields(&mut self, variant: &HirNode<hir::VariantData>) -> Vec<StructField> {
         match &variant.node {
             hir::VariantData::Unit => vec![],
@@ -326,7 +336,13 @@ impl<'hir> TypeCollector<'hir> {
                 Path::Resolved { res, segments } => match res {
                     Res::Local(_) => todo!("can this happen?"),
                     Res::Def(def_id, def_kind) => match def_kind {
-                        DefKind::Struct | DefKind::Enum | DefKind::Function | DefKind::ExternFn | DefKind::AssocFn => {
+                        DefKind::Struct => {
+                            let args = &segments.last().unwrap().node.args;
+                            let args = self.lower_generic_args(args);
+                            ty::Ty::Struct(*def_id, args)
+                        }
+                        DefKind::Enum | DefKind::Function | DefKind::ExternFn | DefKind::AssocFn => {
+                            // TODO: handle generic args
                             self.collected_types.type_of.get(def_id).unwrap().clone()
                         }
                         DefKind::TypeAlias => match self.collecting.get(def_id) {

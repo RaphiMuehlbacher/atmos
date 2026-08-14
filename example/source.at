@@ -1,17 +1,15 @@
-struct Wrapper<T, U> {
+struct Wrapper<T> {
     inner: T
-    other: U,
-    both: (T, U),
 }
 
+fn test(wrapper: Wrapper<bool>) {}
+
 fn main() {
-    let a: Wrapper<bool, u32> = Wrapper {
+    let a: Wrapper<bool> = Wrapper {
         inner: true,
-        other: 3,
-        both: (false, 5),
     };
 
-    let b: (bool, u32) = a.both;
+    test(a);
 }
 
 
