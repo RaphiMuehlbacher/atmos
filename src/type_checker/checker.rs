@@ -1,10 +1,13 @@
 use crate::Session;
 use crate::ast_lowerer::hir::{self, BlockExpr, FnDecl, FnSig, HirId, HirNode, Item, Node, Path, Pattern, Stmt};
+use crate::error::CompilerError;
 use crate::parser::ast::Ident;
 use crate::resolver::DefId;
 use crate::resolver::defs::DefKind;
 use crate::resolver::ribs::{PrimTy, Res};
+use crate::type_checker::error::TypeCheckerError;
 use crate::type_checker::ty::{self, CollectedTypes, GenericArg, GenericArgs, GenericParamDef, InferTy, Ty, TyVarId};
+use miette::{SourceOffset, SourceSpan};
 use std::collections::{HashMap, HashSet};
 
 #[derive(Default, Debug)]
@@ -239,7 +242,22 @@ impl<'hir> TypeChecker<'hir> {
                     match (&arg.kind, param) {
                         (ty::GenericParamKind::Type, GenericArg::Type(_)) => {}
                         (ty::GenericParamKind::Const, GenericArg::Const(_)) => {}
-                        _ => panic!("emit error"),
+                        _ => {
+                            let (expected, found) = match &arg.kind {
+                                ty::GenericParamKind::Type => ("type", "const"),
+                                ty::GenericParamKind::Const => ("const", "type"),
+                            };
+                            self.session.push_error(CompilerError::TypeCheckerError(
+                                TypeCheckerError::GenericArgKindMismatch {
+                                    src: self.session.get_named_source(),
+                                    expected_span: last_segment.span.clone(),
+                                    found_span: last_segment.span.clone(),
+                                    param: format!("{}", arg.index),
+                                    expected: expected.to_string(),
+                                    found: found.to_string(),
+                                },
+                            ));
+                        }
                     }
                 }
                 generic_args
@@ -248,9 +266,21 @@ impl<'hir> TypeChecker<'hir> {
             0 => (0..generics.len())
                 .map(|_| GenericArg::Type(self.infer_ctxt.next_ty_var()))
                 .collect(),
-            _ => panic!("emit error: generic parameter arity does not match"),
+            _ => {
+                self.session.push_error(CompilerError::TypeCheckerError(
+                    TypeCheckerError::GenericArgArityMismatch {
+                        src: self.session.get_named_source(),
+                        span: last_segment.span.clone(),
+                        name: last_segment.node.ident.node.name.clone(),
+                        expected: generics.len(),
+                        found: generic_args.len(),
+                    },
+                ));
+                generic_args
+            }
         }
     }
+
     fn generic_args(&mut self, segment: &HirNode<hir::PathSegment>) -> GenericArgs {
         let mut args = vec![];
         for arg in &segment.node.args {
@@ -266,7 +296,12 @@ impl<'hir> TypeChecker<'hir> {
     fn prohibit_generic_args(&self, segments: &[HirNode<hir::PathSegment>]) {
         for segment in segments {
             if !segment.node.args.is_empty() {
-                panic!("implement error variant")
+                self.session.push_error(CompilerError::TypeCheckerError(
+                    TypeCheckerError::GenericArgsOnLeadingSegment {
+                        src: self.session.get_named_source(),
+                        span: segment.span.clone(),
+                    },
+                ));
             }
         }
     }
@@ -346,10 +381,17 @@ impl<'hir> TypeChecker<'hir> {
                     for field_expr in &struct_expr.fields {
                         let ident = &field_expr.node.ident.node;
 
-                        let field_ty = struct_fields
-                            .get(ident)
-                            .expect("todo: emit error for no such field")
-                            .clone();
+                        let Some(field_ty) = struct_fields.get(ident) else {
+                            self.session
+                                .push_error(CompilerError::TypeCheckerError(TypeCheckerError::FieldNotFound {
+                                    src: self.session.get_named_source(),
+                                    span: field_expr.span.clone(),
+                                    field: ident.name.clone(),
+                                    ty: self.pretty_print_ty(&Ty::Struct(*def_id, args.clone())),
+                                }));
+                            continue;
+                        };
+                        let field_ty = field_ty.clone();
 
                         let field_ty = self.instantiate(&field_ty, &args);
 
@@ -377,7 +419,15 @@ impl<'hir> TypeChecker<'hir> {
                         let fn_sig = self.collected_types.fn_sig.get(&def_id).unwrap().clone();
 
                         if call_expr.args.len() != fn_sig.params.len() {
-                            panic!("emit error for arity");
+                            self.session.push_error(CompilerError::TypeCheckerError(
+                                TypeCheckerError::FnArgArityMismatch {
+                                    src: self.session.get_named_source(),
+                                    expected_span: expr.span.clone(),
+                                    found_span: expr.span.clone(),
+                                    expected: fn_sig.params.len(),
+                                    found: call_expr.args.len(),
+                                },
+                            ));
                         }
 
                         for (arg, param) in call_expr.args.iter().zip(&fn_sig.params) {
@@ -398,7 +448,15 @@ impl<'hir> TypeChecker<'hir> {
                             .collect();
 
                         if call_expr.args.len() != fields.len() {
-                            panic!("emit error for arity");
+                            self.session.push_error(CompilerError::TypeCheckerError(
+                                TypeCheckerError::StructArgArityMismatch {
+                                    src: self.session.get_named_source(),
+                                    expected_span: expr.span.clone(),
+                                    found_span: expr.span.clone(),
+                                    expected: fields.len(),
+                                    found: call_expr.args.len(),
+                                },
+                            ));
                         }
 
                         for (arg, field) in call_expr.args.iter().zip(fields) {
@@ -408,7 +466,15 @@ impl<'hir> TypeChecker<'hir> {
 
                         self.collected_types.type_of.get(&def_id).unwrap().clone()
                     }
-                    _ => panic!("emit error for type mismatch: not callable"),
+                    _ => {
+                        self.session
+                            .push_error(CompilerError::TypeCheckerError(TypeCheckerError::NotCallable {
+                                src: self.session.get_named_source(),
+                                span: expr.span.clone(),
+                                found: self.pretty_print_ty(&callee),
+                            }));
+                        Ty::Err
+                    }
                 }
             }
             hir::Expr::MethodCall(method_call_expr) => todo!(),
@@ -431,17 +497,31 @@ impl<'hir> TypeChecker<'hir> {
             hir::Expr::Field(field_expr) => {
                 let base = self.check_expression(&field_expr.base);
                 let base = self.deeply_resolve(base);
+                let base_str = self.pretty_print_ty(&base);
 
                 let Ty::Struct(def_id, args) = base else {
-                    panic!("emit error for type mismatch: expected struct found {base:?}")
+                    self.session.push_error(CompilerError::TypeCheckerError(
+                        TypeCheckerError::ExpectedStructInFieldAccess {
+                            src: self.session.get_named_source(),
+                            span: field_expr.field.span.clone(),
+                            found: base_str.clone(),
+                        },
+                    ));
+                    return Ty::Err;
                 };
                 let fields = &self.collected_types.structs.get(&def_id).unwrap().fields;
 
-                let field_def_id = fields
-                    .iter()
-                    .find(|field| field.ident == field_expr.field.node)
-                    .expect("emit error for field not found")
-                    .def_id;
+                let Some(field) = fields.iter().find(|field| field.ident == field_expr.field.node) else {
+                    self.session
+                        .push_error(CompilerError::TypeCheckerError(TypeCheckerError::FieldNotFound {
+                            src: self.session.get_named_source(),
+                            span: field_expr.field.span.clone(),
+                            field: field_expr.field.node.name.clone(),
+                            ty: base_str,
+                        }));
+                    return Ty::Err;
+                };
+                let field_def_id = field.def_id;
 
                 let field_ty = self.collected_types.type_of.get(&field_def_id).unwrap().clone();
                 self.instantiate(&field_ty, &args)
@@ -466,7 +546,13 @@ impl<'hir> TypeChecker<'hir> {
                             }
                             Res::Def(def_id, def_kind) => todo!(),
                             Res::PrimTy(prim_ty) => {
-                                todo!("i think this should always error: expected value, found type")
+                                self.session.push_error(CompilerError::TypeCheckerError(
+                                    TypeCheckerError::ExpectedValueType {
+                                        src: self.session.get_named_source(),
+                                        span: path.span.clone(),
+                                    },
+                                ));
+                                Ty::Err
                             }
                             Res::SelfTy(self_ty_info) => todo!(),
                             Res::Err => todo!(),
@@ -568,7 +654,16 @@ impl<'hir> TypeChecker<'hir> {
                     );
                 }
             }
-            (found, expected) => panic!("unification failed: found: {found:?}, expected: {expected:?}"),
+            (found, expected) => {
+                self.session
+                    .push_error(CompilerError::TypeCheckerError(TypeCheckerError::TypeMismatch {
+                        src: self.session.get_named_source(),
+                        expected_span: SourceSpan::new(SourceOffset::from(0), 0),
+                        found_span: SourceSpan::new(SourceOffset::from(0), 0),
+                        expected: self.pretty_print_ty(&expected),
+                        found: self.pretty_print_ty(&found),
+                    }));
+            }
         }
     }
 
@@ -625,5 +720,55 @@ impl<'hir> TypeChecker<'hir> {
                 GenericArg::Const(_) => todo!(),
             })
             .collect()
+    }
+
+    fn pretty_print_ty(&self, ty: &Ty) -> String {
+        match ty {
+            Ty::Unit => "()".to_string(),
+            Ty::Bool => "bool".to_string(),
+            Ty::I32 => "i32".to_string(),
+            Ty::U32 => "u32".to_string(),
+            Ty::F64 => "f64".to_string(),
+            Ty::Str => "str".to_string(),
+            Ty::Never => "!".to_string(),
+            Ty::Infer(InferTy::IntVar(_)) => "{integer}".to_string(),
+            Ty::Infer(InferTy::TyVar(_)) => "{unknown}".to_string(),
+            Ty::Array(ty, _) => format!("[{}; N]", self.pretty_print_ty(ty)),
+            Ty::Slice(ty) => format!("[{}]", self.pretty_print_ty(ty)),
+            Ty::Tuple(types) if types.is_empty() => "()".to_string(),
+            Ty::Tuple(types) => {
+                let inner = types
+                    .iter()
+                    .map(|t| self.pretty_print_ty(t))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!("({inner})")
+            }
+            Ty::Ptr(ty) => format!("&{}", self.pretty_print_ty(ty)),
+            Ty::FnPtr(params, ret) => {
+                let params = params
+                    .iter()
+                    .map(|t| self.pretty_print_ty(t))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!("fn({}) -> {}", params, self.pretty_print_ty(ret))
+            }
+            Ty::Fn(def_id, args) => format!("fn({:?})<{}>", def_id, self.pretty_print_args(args)),
+            Ty::Struct(def_id, args) => format!("Struct {:?}<{}>", def_id, self.pretty_print_args(args)),
+            Ty::Enum(def_id, args) => format!("Enum {:?}<{}>", def_id, self.pretty_print_args(args)),
+            Ty::GenericParam(idx) => format!("T{idx}"),
+            Ty::Err => "{err}".to_string(),
+            Ty::InherentTyAlias { .. } => "{alias}".to_string(),
+        }
+    }
+
+    fn pretty_print_args(&self, args: &[GenericArg]) -> String {
+        args.iter()
+            .map(|arg| match arg {
+                GenericArg::Type(ty) => self.pretty_print_ty(ty),
+                GenericArg::Const(_) => "_".to_string(),
+            })
+            .collect::<Vec<_>>()
+            .join(", ")
     }
 }
