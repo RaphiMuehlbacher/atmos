@@ -1,3 +1,4 @@
+/*
 struct Pair<T, U> {
     first: T,
     second: U,
@@ -37,32 +38,28 @@ fn main() {
     let transformated: Pair<Pair<u32, bool>, Pair<bool, u32>> = transform(pair, pair2);
     let inner_second: bool = second(first(transformated));
 }
-
-/*
-struct Person<T>;
-
-impl Person<i32> {
-    type A = i32;
-}
-
-fn test(a: Person<i32>::B) -> i32 { a }
-
-impl Person<u32> {
-    type B = u32;
-}
 */
 
-
-
-/*
-struct Person;
-
-impl Person {
-    type A = i32;
+struct Wrapper<T> {
+    inner: T,
 }
 
-fn test(a: Person::A) {}
-*/
+impl<T> Wrapper<T> {
+    fn new(inner: T) -> Self {
+        Self {
+            inner: inner,
+        }
+    }
+
+    fn inner(self: Self) -> T {
+        self.inner
+    }
+}
+
+fn main() {
+    let wrapper = Wrapper::new(3);
+}
+
 /*
 enum Option<T> {
     Some(T),

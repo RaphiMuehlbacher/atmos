@@ -185,17 +185,6 @@ impl<'hir> TypeCollector<'hir> {
                     self.collected_types.type_of.insert(def_id, self_ty.clone());
 
                     self.collect_assoc_items(&impl_decl.items);
-
-                    let self_ty_def_id = match self_ty {
-                        ty::Ty::Struct(def_id, _) | ty::Ty::Enum(def_id, _) => def_id,
-                        _ => panic!(),
-                    };
-
-                    self.collected_types
-                        .impls_of
-                        .entry(self_ty_def_id)
-                        .or_default()
-                        .push(impl_decl.def_id);
                 }
                 Item::Const(const_decl) => {
                     let generic_params = Generics::without_parent(&const_decl.generics);

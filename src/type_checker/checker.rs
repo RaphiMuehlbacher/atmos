@@ -563,7 +563,29 @@ impl<'hir> TypeChecker<'hir> {
                     res,
                     resolved_segments,
                     unresolved_segments,
-                } => todo!(),
+                } => match res {
+                    Res::Def(def_id, DefKind::Struct) => {
+                        assert_eq!(
+                            unresolved_segments.len(),
+                            1,
+                            "currently associated items can only have one segment"
+                        );
+                        let ident = &unresolved_segments[0].node.ident.node;
+
+                        let impls = self.collected_types.impls_of.get(def_id).unwrap();
+                        let assoc_item = impls
+                            .iter()
+                            .flat_map(|def_id| self.collected_types.assoc_items.get(def_id).unwrap())
+                            .find(|assoc| &assoc.ident == ident)
+                            .expect("emit error for associated item not found")
+                            .clone();
+
+                        // TODO: for now only associated functions
+                        let args = self.lower_generic_args(*def_id, &unresolved_segments);
+                        Ty::Fn(*&assoc_item.def_id, args)
+                    }
+                    _ => todo!(),
+                },
             },
             hir::Expr::AddrOf(expr) => self.check_expression(expr),
             hir::Expr::Break(expr) => expr.as_ref().map_or(Ty::Unit, |expr| self.check_expression(expr)),
