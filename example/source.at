@@ -1,64 +1,40 @@
-/*
 struct Pair<T, U> {
     first: T,
     second: U,
 }
 
-fn first<T, U>(pair: Pair<T, U>) -> T {
-    pair.first
-}
-
-fn second<T, U>(pair: Pair<T, U>) -> U {
-    pair.second
-}
-
-fn transform<T, U>(
-    x: Pair<T, U>,
-    y: Pair<U, T>
-) -> Pair<Pair<T, U>, Pair<U, T>> {
-    Pair {
-        first: x,
-        second: y,
-    }
-}
-
-fn main() {
-    let pair = Pair {
-        first: 3,
-        second: false,
-    };
-
-    let pair2 = Pair {
-        first: true,
-        second: 4,
-    };
-
-    let first_: u32 = first(pair);
-    let second_: u32 = second(pair2);
-    let transformated: Pair<Pair<u32, bool>, Pair<bool, u32>> = transform(pair, pair2);
-    let inner_second: bool = second(first(transformated));
-}
-*/
-
-struct Wrapper<T> {
-    inner: T,
-}
-
-impl<T> Wrapper<T> {
-    fn new(inner: T) -> Self {
+impl<T, U> Pair<T, U> {
+    fn new(first: T, second: U) -> Self {
         Self {
-            inner: inner,
+            first: first,
+            second: second,
         }
     }
 
-    fn inner(self: Self) -> T {
-        self.inner
+    fn first(self: Self) -> T {
+        self.first
+    }
+
+    fn second(self: Self) -> U {
+        self.second
+    }
+
+    fn fun(self: Self) -> Self {
+        Self::new(self.first(), self.second())
     }
 }
 
 fn main() {
-    let wrapper = Wrapper::new(3);
+    let pair = Pair::new(3, false);
+
+    let pair2 = Pair::new(true, 4);
+
+    let first_: u32 = pair.first();
+    let second_: u32 = pair2.second();
+
+    let f: Pair<u32, bool> = pair.fun();
 }
+
 
 /*
 enum Option<T> {

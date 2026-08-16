@@ -1,10 +1,12 @@
 use crate::Session;
-use crate::ast_lowerer::hir::{self, BlockExpr, FnDecl, FnSig, HirId, HirNode, Item, Node, Path, Pattern, Stmt};
+use crate::ast_lowerer::hir::{
+    self, AssociatedItemKind, BlockExpr, FnDecl, FnSig, HirId, HirNode, Item, Node, Path, Pattern, Stmt,
+};
 use crate::error::CompilerError;
 use crate::parser::ast::Ident;
 use crate::resolver::DefId;
 use crate::resolver::defs::DefKind;
-use crate::resolver::ribs::{PrimTy, Res};
+use crate::resolver::ribs::{PrimTy, Res, SelfTyInfo};
 use crate::type_checker::error::TypeCheckerError;
 use crate::type_checker::ty::{self, CollectedTypes, GenericArg, GenericArgs, GenericParamDef, InferTy, Ty, TyVarId};
 use miette::{SourceOffset, SourceSpan};
@@ -59,11 +61,17 @@ impl<'hir> TypeChecker<'hir> {
 
     pub fn check(&mut self) {
         for (def_id, hir_id) in self.def_to_hir {
-            let Node::Item(item_kind) = self.hir_nodes.get(hir_id).unwrap() else {
-                continue;
-            };
-            let Item::Fn(FnDecl { def_id: _, sig, body }) = &item_kind.node else {
-                continue;
+            let (sig, body) = match self.hir_nodes.get(hir_id).unwrap() {
+                Node::Item(HirNode {
+                    node: Item::Fn(FnDecl { def_id: _, sig, body }),
+                    ..
+                }) => (sig, body),
+                Node::AssociatedItem(assoc_item)
+                    if let AssociatedItemKind::Fn(sig, Some(body)) = &assoc_item.node.kind =>
+                {
+                    (sig, body)
+                }
+                _ => continue,
             };
 
             self.check_fn(*def_id, sig, body);
@@ -263,9 +271,7 @@ impl<'hir> TypeChecker<'hir> {
                 generic_args
             }
 
-            0 => (0..generics.len())
-                .map(|_| GenericArg::Type(self.infer_ctxt.next_ty_var()))
-                .collect(),
+            0 => self.identity_args(generics.len()),
             _ => {
                 self.session.push_error(CompilerError::TypeCheckerError(
                     TypeCheckerError::GenericArgArityMismatch {
@@ -279,6 +285,12 @@ impl<'hir> TypeChecker<'hir> {
                 generic_args
             }
         }
+    }
+
+    fn identity_args(&mut self, count: usize) -> GenericArgs {
+        (0..count)
+            .map(|_| GenericArg::Type(self.infer_ctxt.next_ty_var()))
+            .collect()
     }
 
     fn generic_args(&mut self, segment: &HirNode<hir::PathSegment>) -> GenericArgs {
@@ -358,59 +370,76 @@ impl<'hir> TypeChecker<'hir> {
     fn check_expression(&mut self, expr: &HirNode<hir::Expr>) -> Ty {
         match &expr.node {
             hir::Expr::Array(exprs) => todo!(),
-            hir::Expr::Struct(struct_expr) => match &struct_expr.path.node {
-                Path::Resolved {
-                    res: Res::Def(def_id, DefKind::Struct),
-                    segments,
-                } => {
-                    let args = self.lower_generic_args(*def_id, segments);
-
-                    let struct_def = self.collected_types.structs.get(def_id).unwrap().clone();
-                    let struct_fields: HashMap<_, _> = struct_def
-                        .fields
-                        .into_iter()
-                        .map(|field| {
-                            (
-                                field.ident,
-                                self.collected_types.type_of.get(&field.def_id).unwrap().clone(),
-                            )
-                        })
-                        .collect();
-
-                    let mut seen = HashSet::<&Ident>::new();
-                    for field_expr in &struct_expr.fields {
-                        let ident = &field_expr.node.ident.node;
-
-                        let Some(field_ty) = struct_fields.get(ident) else {
-                            self.session
-                                .push_error(CompilerError::TypeCheckerError(TypeCheckerError::FieldNotFound {
-                                    src: self.session.get_named_source(),
-                                    span: field_expr.span.clone(),
-                                    field: ident.name.clone(),
-                                    ty: self.pretty_print_ty(&Ty::Struct(*def_id, args.clone())),
-                                }));
-                            continue;
-                        };
-                        let field_ty = field_ty.clone();
-
-                        let field_ty = self.instantiate(&field_ty, &args);
-
-                        if seen.contains(ident) {
-                            todo!("emit error for field specified more than once");
-                        }
-                        seen.insert(ident);
-
-                        let found_ty = self.check_expression(&field_expr.node.expr);
-                        self.unify(found_ty, field_ty);
+            hir::Expr::Struct(struct_expr) => {
+                let (def_id, args) = match &struct_expr.path.node {
+                    Path::Resolved {
+                        res: Res::Def(def_id, DefKind::Struct),
+                        segments,
+                    } => {
+                        let args = self.lower_generic_args(*def_id, segments);
+                        (def_id, args)
                     }
+                    Path::Resolved {
+                        res:
+                            Res::SelfTy(SelfTyInfo {
+                                self_ty_def: Some(def_id),
+                                ..
+                            }),
+                        segments,
+                    } => {
+                        self.prohibit_generic_args(segments);
+                        let generics_count = self.collected_types.generics_of.get(def_id).unwrap().params.len();
 
-                    for _ in struct_fields.keys().filter(|ident| !seen.contains(ident)) {
-                        todo!("emit error for missing field")
+                        let args = self.identity_args(generics_count);
+                        (def_id, args)
                     }
-                    Ty::Struct(*def_id, args)
+                    _ => panic!("shouldn't be possible"),
+                };
+
+                let struct_def = self.collected_types.structs.get(def_id).unwrap().clone();
+                let struct_fields: HashMap<_, _> = struct_def
+                    .fields
+                    .into_iter()
+                    .map(|field| {
+                        (
+                            field.ident,
+                            self.collected_types.type_of.get(&field.def_id).unwrap().clone(),
+                        )
+                    })
+                    .collect();
+
+                let mut seen = HashSet::<&Ident>::new();
+                for field_expr in &struct_expr.fields {
+                    let ident = &field_expr.node.ident.node;
+
+                    let Some(field_ty) = struct_fields.get(ident) else {
+                        self.session
+                            .push_error(CompilerError::TypeCheckerError(TypeCheckerError::FieldNotFound {
+                                src: self.session.get_named_source(),
+                                span: field_expr.span.clone(),
+                                field: ident.name.clone(),
+                                ty: self.pretty_print_ty(&Ty::Struct(*def_id, args.clone())),
+                            }));
+                        continue;
+                    };
+                    let field_ty = field_ty.clone();
+
+                    let field_ty = self.instantiate(&field_ty, &args);
+
+                    if seen.contains(ident) {
+                        todo!("emit error for field specified more than once");
+                    }
+                    seen.insert(ident);
+
+                    let found_ty = self.check_expression(&field_expr.node.expr);
+                    self.unify(found_ty, field_ty);
                 }
-                _ => panic!("shouldn't be possible"),
-            },
+
+                for _ in struct_fields.keys().filter(|ident| !seen.contains(ident)) {
+                    todo!("emit error for missing field")
+                }
+                Ty::Struct(*def_id, args)
+            }
             hir::Expr::Call(call_expr) => {
                 let callee = self.check_expression(&call_expr.callee);
 
@@ -477,7 +506,51 @@ impl<'hir> TypeChecker<'hir> {
                     }
                 }
             }
-            hir::Expr::MethodCall(method_call_expr) => todo!(),
+            hir::Expr::MethodCall(method_call) => {
+                let receiver = self.check_expression(&method_call.receiver);
+                let receiver = self.deeply_resolve(receiver);
+                let ident = &method_call.method.node.ident.node;
+
+                match &receiver {
+                    Ty::Struct(def_id, args) => {
+                        let args = self.lower_generic_args(*def_id, &[method_call.method.clone()]);
+                        let impls = self.collected_types.impls_of.get(def_id).unwrap();
+                        let assoc_item = impls
+                            .iter()
+                            .flat_map(|def_id| self.collected_types.assoc_items.get(def_id).unwrap())
+                            .find(|assoc| &assoc.ident == ident)
+                            .expect("emit error for associated item not found")
+                            .clone();
+
+                        let fn_sig = self.collected_types.fn_sig.get(&assoc_item.def_id).unwrap().clone();
+
+                        if method_call.args.len() + 1 != fn_sig.params.len() {
+                            self.session.push_error(CompilerError::TypeCheckerError(
+                                TypeCheckerError::FnArgArityMismatch {
+                                    src: self.session.get_named_source(),
+                                    expected_span: expr.span.clone(),
+                                    found_span: expr.span.clone(),
+                                    expected: fn_sig.params.len(),
+                                    found: method_call.args.len(),
+                                },
+                            ));
+                        }
+
+                        let first_param = self.instantiate(fn_sig.params.first().unwrap(), &args);
+                        self.unify(receiver.clone(), first_param);
+
+                        for (arg, param) in method_call.args.iter().zip(fn_sig.params.iter().skip(1)) {
+                            let arg_ty = self.check_expression(arg);
+                            let param = self.instantiate(param, &args);
+                            self.unify(arg_ty, param.clone());
+                        }
+
+                        self.instantiate(&fn_sig.return_ty, &args)
+                    }
+                    Ty::Enum(def_id, args) => todo!(),
+                    _ => panic!("emit error that you can only call methods on structs and enums"),
+                }
+            }
             hir::Expr::Tuple(tuple_expr) => {
                 Ty::Tuple(tuple_expr.iter().map(|expr| self.check_expression(expr)).collect())
             }
@@ -573,6 +646,7 @@ impl<'hir> TypeChecker<'hir> {
                         let ident = &unresolved_segments[0].node.ident.node;
 
                         let impls = self.collected_types.impls_of.get(def_id).unwrap();
+
                         let assoc_item = impls
                             .iter()
                             .flat_map(|def_id| self.collected_types.assoc_items.get(def_id).unwrap())
@@ -583,6 +657,48 @@ impl<'hir> TypeChecker<'hir> {
                         // TODO: for now only associated functions
                         let args = self.lower_generic_args(*def_id, &unresolved_segments);
                         Ty::Fn(*&assoc_item.def_id, args)
+                    }
+                    Res::SelfTy(self_ty_info) => {
+                        let ty = self
+                            .collected_types
+                            .type_of
+                            .get(&self_ty_info.impl_or_trait_def)
+                            .unwrap()
+                            .clone();
+
+                        let generics_count = self
+                            .collected_types
+                            .generics_of
+                            .get(&self_ty_info.impl_or_trait_def)
+                            .unwrap()
+                            .params
+                            .len();
+
+                        let args = self.identity_args(generics_count);
+                        let ty = self.instantiate(&ty, &args).clone();
+
+                        match unresolved_segments.len() {
+                            0 => ty,
+                            1 => {
+                                let item = self
+                                    .collected_types
+                                    .assoc_items
+                                    .get(&self_ty_info.impl_or_trait_def)
+                                    .unwrap()
+                                    .iter()
+                                    .find(|assoc| assoc.ident == unresolved_segments[0].node.ident.node)
+                                    .map(|assoc_def_id| self.collected_types.type_of.get(&assoc_def_id.def_id).unwrap())
+                                    .unwrap();
+
+                                // TODO: for now no generic params on methods
+                                // to support it combine the generics of `Self` and `item`
+
+                                // TODO: for now only associated functions
+                                let Ty::Fn(def_id, _) = item else { panic!() };
+                                Ty::Fn(*def_id, args)
+                            }
+                            _ => panic!("currently only one unresolved segment supported"),
+                        }
                     }
                     _ => todo!(),
                 },
