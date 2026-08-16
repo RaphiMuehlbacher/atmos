@@ -3,12 +3,17 @@ struct Pair<T, U> {
     second: U,
 }
 
+
 impl<T, U> Pair<T, U> {
     fn new(first: T, second: U) -> Self {
         Self {
             first: first,
             second: second,
         }
+    }
+
+    fn with_first(first: T) -> Pair<T, i32> {
+        Self::new(first, 3)
     }
 
     fn first(self: Self) -> T {

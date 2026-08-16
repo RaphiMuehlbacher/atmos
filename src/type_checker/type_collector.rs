@@ -326,8 +326,23 @@ impl<'hir> TypeCollector<'hir> {
                     Res::Local(_) => todo!("can this happen?"),
                     Res::Def(def_id, def_kind) => match def_kind {
                         DefKind::Struct => {
-                            let args = &segments.last().unwrap().node.args;
+                            let last_segment = &segments.last().unwrap();
+                            let args = &last_segment.node.args;
+                            let generics = self.collected_types.generics_of.get(def_id).unwrap();
                             let args = self.lower_generic_args(args);
+
+                            if generics.params.len() != args.len() {
+                                self.session.push_error(CompilerError::TypeCheckerError(
+                                    TypeCheckerError::GenericArgArityMismatch {
+                                        src: self.session.get_named_source(),
+                                        span: last_segment.span.clone(),
+                                        name: last_segment.node.ident.node.name.clone(),
+                                        expected: generics.params.len(),
+                                        found: args.len(),
+                                    },
+                                ));
+                            }
+
                             ty::Ty::Struct(*def_id, args)
                         }
                         DefKind::Enum | DefKind::Function | DefKind::ExternFn | DefKind::AssocFn => {
