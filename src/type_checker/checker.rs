@@ -388,9 +388,9 @@ impl<'hir> TypeChecker<'hir> {
                         segments,
                     } => {
                         self.prohibit_generic_args(segments);
-                        let generics_count = self.collected_types.generics_of.get(def_id).unwrap().params.len();
+                        let generics = self.generics_of(*def_id);
 
-                        let args = self.identity_args(generics_count);
+                        let args = self.identity_args(generics.len());
                         (def_id, args)
                     }
                     _ => panic!("shouldn't be possible"),
@@ -658,22 +658,13 @@ impl<'hir> TypeChecker<'hir> {
                         let args = self.lower_generic_args(*def_id, &unresolved_segments);
                         Ty::Fn(*&assoc_item.def_id, args)
                     }
-                    Res::SelfTy(self_ty_info) => {
-                        let ty = self
-                            .collected_types
-                            .type_of
-                            .get(&self_ty_info.impl_or_trait_def)
-                            .unwrap()
-                            .clone();
+                    Res::SelfTy(SelfTyInfo {
+                        impl_or_trait_def: def_id,
+                        ..
+                    }) => {
+                        let ty = self.collected_types.type_of.get(def_id).unwrap().clone();
 
-                        let generics_count = self
-                            .collected_types
-                            .generics_of
-                            .get(&self_ty_info.impl_or_trait_def)
-                            .unwrap()
-                            .params
-                            .len();
-
+                        let generics_count = self.generics_of(*def_id).len();
                         let args = self.identity_args(generics_count);
                         let ty = self.instantiate(&ty, &args).clone();
 
@@ -683,7 +674,7 @@ impl<'hir> TypeChecker<'hir> {
                                 let item = self
                                     .collected_types
                                     .assoc_items
-                                    .get(&self_ty_info.impl_or_trait_def)
+                                    .get(def_id)
                                     .unwrap()
                                     .iter()
                                     .find(|assoc| assoc.ident == unresolved_segments[0].node.ident.node)

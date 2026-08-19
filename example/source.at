@@ -12,8 +12,11 @@ impl<T, U> Pair<T, U> {
         }
     }
 
-    fn with_first(first: T) -> Pair<T, i32> {
-        Self::new(first, 3)
+    fn test<A>(a: A, t: T) -> Pair<A, T> {
+        Self {
+            first: a,
+            second: t,
+        }
     }
 
     fn first(self: Self) -> T {
