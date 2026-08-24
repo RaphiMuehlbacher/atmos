@@ -1,6 +1,7 @@
 use crate::Session;
 use crate::parser::AstId;
 use crate::parser::ast::Crate;
+use crate::resolver::DefId;
 use crate::resolver::collect_defs::DefCollector;
 use crate::resolver::defs::DefinitionMap;
 use crate::resolver::imports::ImportResolver;
@@ -17,7 +18,8 @@ pub struct Resolver<'ast> {
     pub defs: DefinitionMap,
 
     pub module_arena: ModuleArena,
-    pub modules: HashMap<AstId, ModuleId>,
+    pub block_modules: HashMap<AstId, ModuleId>,
+    pub def_modules: HashMap<DefId, ModuleId>,
     pub unresolved_imports: Vec<ImportId>,
 }
 
@@ -28,7 +30,8 @@ impl<'ast> Resolver<'ast> {
             ast_program,
             defs: DefinitionMap::default(),
             module_arena: ModuleArena::new(),
-            modules: HashMap::new(),
+            block_modules: HashMap::new(),
+            def_modules: HashMap::new(),
             unresolved_imports: Vec::new(),
         }
     }

@@ -13,9 +13,7 @@ pub struct ModuleArena {
 impl ModuleArena {
     #[must_use]
     pub fn new() -> Self {
-        let mut modules = Vec::new();
-        let root_module = Module::root();
-        modules.push(root_module);
+        let modules = vec![Module::root()];
         let root_id = ModuleId(0);
 
         Self {
@@ -90,7 +88,7 @@ impl visitor::Visitor for ModuleBuilder<'_, '_> {
                     .module_arena
                     .define(parent, module_decl.ident.node.clone(), Binding::Module(module));
 
-                self.r.modules.insert(item.ast_id, module);
+                self.r.def_modules.insert(*def_id, module);
                 self.parent = module;
             }
             Item::Fn(fn_decl) => {
@@ -108,7 +106,7 @@ impl visitor::Visitor for ModuleBuilder<'_, '_> {
                 self.r
                     .module_arena
                     .define(parent, enum_decl.ident.node.clone(), Binding::Item(*def_id));
-                self.r.modules.insert(item.ast_id, module);
+                self.r.def_modules.insert(*def_id, module);
                 self.parent = module;
             }
             Item::Trait(trait_decl) => {
@@ -116,7 +114,7 @@ impl visitor::Visitor for ModuleBuilder<'_, '_> {
                 self.r
                     .module_arena
                     .define(parent, trait_decl.ident.node.clone(), Binding::Item(*def_id));
-                self.r.modules.insert(item.ast_id, module);
+                self.r.def_modules.insert(*def_id, module);
                 self.parent = module;
             }
             Item::Const(const_decl) => {
@@ -151,7 +149,7 @@ impl visitor::Visitor for ModuleBuilder<'_, '_> {
 
     fn visit_block(&mut self, block: &AstNode<BlockExpr>) {
         let module = self.r.module_arena.add_module(self.parent, ModuleKind::Block);
-        self.r.modules.insert(block.ast_id, module);
+        self.r.block_modules.insert(block.ast_id, module);
         visitor::walk_block(self, block);
     }
 

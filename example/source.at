@@ -1,48 +1,11 @@
-struct Pair<T, U> {
-    first: T,
-    second: U,
-}
-
-
-impl<T, U> Pair<T, U> {
-    fn new(first: T, second: U) -> Self {
-        Self {
-            first: first,
-            second: second,
-        }
-    }
-
-    fn test<A>(a: A, t: T) -> Pair<A, T> {
-        Self {
-            first: a,
-            second: t,
-        }
-    }
-
-    fn first(self: Self) -> T {
-        self.first
-    }
-
-    fn second(self: Self) -> U {
-        self.second
-    }
-
-    fn fun(self: Self) -> Self {
-        Self::new(self.first(), self.second())
-    }
+enum Color {
+    White,
+    Red,
 }
 
 fn main() {
-    let pair = Pair::new(3, false);
-
-    let pair2 = Pair::new(true, 4);
-
-    let first_: u32 = pair.first();
-    let second_: u32 = pair2.second();
-
-    let f: Pair<u32, bool> = pair.fun();
+    let color = Color::White;
 }
-
 
 /*
 enum Option<T> {

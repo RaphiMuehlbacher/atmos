@@ -246,27 +246,30 @@ impl<'a, 'r> LateResolver<'a, 'r> {
                 }
                 Some(Binding::Item(def_id)) => {
                     let def_kind = self.r.defs.get_definition(def_id).unwrap().kind;
-                    if !is_last
-                        && matches!(
-                            def_kind,
-                            DefKind::GenericParam
-                                | DefKind::Struct
-                                | DefKind::Enum
-                                | DefKind::TypeAlias
-                                | DefKind::Trait
-                        )
-                    {
+
+                    if is_last {
+                        self.r.defs.insert_resolution(path.ast_id, Res::Def(def_id, def_kind));
+                        self.r.defs.insert_ast_id(path.ast_id, def_id);
+                        return;
+                    }
+
+                    if matches!(
+                        def_kind,
+                        DefKind::GenericParam | DefKind::Struct | DefKind::TypeAlias | DefKind::Trait
+                    ) {
                         let partial_res = PartialRes::new(Res::Def(def_id, def_kind), segments.len() - 1 - i);
                         self.r.defs.partial_res.insert(path.ast_id, partial_res);
                         self.r.defs.insert_ast_id(path.ast_id, def_id);
                         return;
                     }
-                    if !is_last {
-                        self.report_unresolved_path(path);
-                        return;
+
+                    // TODO: extend to traits
+                    if let DefKind::Enum = def_kind {
+                        let module_id = self.r.def_modules.get(&def_id).unwrap();
+                        current_module = *module_id;
+                        continue;
                     }
-                    self.r.defs.insert_resolution(path.ast_id, Res::Def(def_id, def_kind));
-                    self.r.defs.insert_ast_id(path.ast_id, def_id);
+                    self.report_unresolved_path(path);
                     return;
                 }
                 Some(Binding::Import(import_id)) => {
@@ -276,24 +279,31 @@ impl<'a, 'r> LateResolver<'a, 'r> {
                             current_module = *module_id;
                         }
                         Some(Binding::Item(def_id)) => {
-                            if !is_last
-                                && matches!(
-                                    self.r.defs.get_definition(*def_id).unwrap().kind,
-                                    DefKind::GenericParam
-                                        | DefKind::Struct
-                                        | DefKind::Enum
-                                        | DefKind::TypeAlias
-                                        | DefKind::Trait
-                                )
-                            {
+                            let def_kind = self.r.defs.get_definition(*def_id).unwrap().kind;
+
+                            if is_last {
+                                self.r.defs.insert_resolution(path.ast_id, Res::Def(*def_id, def_kind));
                                 self.r.defs.insert_ast_id(path.ast_id, *def_id);
                                 return;
                             }
-                            if !is_last {
-                                self.report_unresolved_path(path);
+
+                            if matches!(
+                                def_kind,
+                                DefKind::GenericParam | DefKind::Struct | DefKind::TypeAlias | DefKind::Trait
+                            ) {
+                                let partial_res = PartialRes::new(Res::Def(*def_id, def_kind), segments.len() - 1 - i);
+                                self.r.defs.partial_res.insert(path.ast_id, partial_res);
+                                self.r.defs.insert_ast_id(path.ast_id, *def_id);
                                 return;
                             }
-                            self.r.defs.insert_ast_id(path.ast_id, *def_id);
+
+                            // TODO: extend to traits
+                            if let DefKind::Enum = def_kind {
+                                let module_id = self.r.def_modules.get(def_id).unwrap();
+                                current_module = *module_id;
+                                continue;
+                            }
+                            self.report_unresolved_path(path);
                             return;
                         }
                         _ => {
@@ -416,10 +426,6 @@ impl Visitor for LateResolver<'_, '_> {
         let orig_module = self.parent;
         let orig_self_ty_info = self.self_ty_info;
 
-        if let Some(module_id) = self.r.modules.get(&item.ast_id) {
-            self.parent = *module_id;
-        }
-
         match &item.node {
             Item::Impl(impl_decl) => {
                 let impl_def_id = self.r.defs.get_def_from_ast(item.ast_id).copied();
@@ -458,6 +464,11 @@ impl Visitor for LateResolver<'_, '_> {
             _ => {}
         }
 
+        let def_id = self.r.defs.get_def_from_ast(item.ast_id).unwrap();
+        if let Some(module_id) = self.r.def_modules.get(def_id) {
+            self.parent = *module_id;
+        }
+
         self.with_rib(RibKind::Item, |this| visitor::walk_item(this, item));
         self.parent = orig_module;
         self.self_ty_info = orig_self_ty_info;
@@ -471,7 +482,7 @@ impl Visitor for LateResolver<'_, '_> {
 
     fn visit_block(&mut self, block: &AstNode<BlockExpr>) {
         let orig_module = self.parent;
-        self.parent = *self.r.modules.get(&block.ast_id).unwrap();
+        self.parent = *self.r.block_modules.get(&block.ast_id).unwrap();
         visitor::walk_block(self, block);
         self.parent = orig_module;
     }
