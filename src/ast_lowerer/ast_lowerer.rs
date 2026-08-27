@@ -265,7 +265,7 @@ impl<'ast> AstLowerer<'ast> {
         hir_node
     }
 
-    fn lower_res(&mut self, res: &Res<AstId>) -> Res {
+    fn lower_res(&self, res: &Res<AstId>) -> Res {
         match res {
             Res::Local(ast_id) => {
                 let hir_id = self.ast_to_hir.get(ast_id).unwrap();

@@ -67,9 +67,10 @@ pub enum InferTy {
 }
 
 impl InferTy {
+    #[must_use]
     pub fn ty_var(&self) -> TyVarId {
         match self {
-            InferTy::TyVar(ty_var_id) | InferTy::IntVar(ty_var_id) => *ty_var_id,
+            Self::TyVar(ty_var_id) | Self::IntVar(ty_var_id) => *ty_var_id,
         }
     }
 }
@@ -160,6 +161,7 @@ impl From<hir::GenericParamKind> for GenericParamKind {
 }
 
 impl Generics {
+    #[must_use]
     pub fn new(parent: Option<DefId>, params: &[HirNode<GenericParam>], index_start: usize) -> Self {
         let params = params
             .iter()
@@ -174,14 +176,17 @@ impl Generics {
         Self { parent, params }
     }
 
+    #[must_use]
     pub fn with_parent(parent: DefId, params: &[HirNode<GenericParam>], index_start: usize) -> Self {
         Self::new(Some(parent), params, index_start)
     }
 
+    #[must_use]
     pub fn without_parent(params: &[HirNode<GenericParam>]) -> Self {
         Self::new(None, params, 0)
     }
 
+    #[must_use]
     pub fn for_trait(trait_def_id: DefId, params: &[HirNode<GenericParam>]) -> Self {
         let mut generics = Self::new(None, params, 1);
         generics.params.insert(
@@ -195,12 +200,13 @@ impl Generics {
         generics
     }
 
-    pub fn get_index(&self, def_id: DefId, generics_of: &HashMap<DefId, Generics>) -> usize {
+    #[must_use]
+    pub fn get_index(&self, def_id: DefId, generics_of: &HashMap<DefId, Self>) -> usize {
         let param = self.params.iter().find(|param| param.def_id == def_id);
         match param {
             Some(param) => param.index,
             None if let Some(parent_def_id) = self.parent => {
-                Generics::get_index(generics_of.get(&parent_def_id).unwrap(), def_id, &generics_of)
+                Self::get_index(generics_of.get(&parent_def_id).unwrap(), def_id, generics_of)
             }
             None => panic!(),
         }

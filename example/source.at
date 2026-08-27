@@ -1,10 +1,18 @@
-enum Color {
-    White,
-    Red,
+enum Option<T> {
+    Some(T),
+    None
 }
 
+enum Test {
+    A {
+        a: i32,
+    }
+}
+
+
 fn main() {
-    let color = Color::White;
+    let b = Test::A { a: 3 };
+    // let a = Option::Some(i32);
 }
 
 /*

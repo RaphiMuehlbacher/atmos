@@ -11,6 +11,7 @@ use crate::type_checker::error::TypeCheckerError;
 use crate::type_checker::ty::{self, CollectedTypes, GenericArg, GenericArgs, GenericParamDef, InferTy, Ty, TyVarId};
 use miette::{SourceOffset, SourceSpan};
 use std::collections::{HashMap, HashSet};
+use std::slice;
 
 #[derive(Default, Debug)]
 pub struct InferCtxt {
@@ -195,7 +196,7 @@ impl<'hir> TypeChecker<'hir> {
                     Ty::Enum(*def_id, args)
                 }
                 DefKind::StructField => todo!(),
-                DefKind::EnumVariant => todo!(),
+                DefKind::EnumVariant => panic!("enum variants in type position not supported"),
                 DefKind::Trait => todo!(),
                 DefKind::Mod => todo!(),
                 DefKind::Impl => todo!(),
@@ -258,8 +259,8 @@ impl<'hir> TypeChecker<'hir> {
                             self.session.push_error(CompilerError::TypeCheckerError(
                                 TypeCheckerError::GenericArgKindMismatch {
                                     src: self.session.get_named_source(),
-                                    expected_span: last_segment.span.clone(),
-                                    found_span: last_segment.span.clone(),
+                                    expected_span: last_segment.span,
+                                    found_span: last_segment.span,
                                     param: format!("{}", arg.index),
                                     expected: expected.to_string(),
                                     found: found.to_string(),
@@ -276,7 +277,7 @@ impl<'hir> TypeChecker<'hir> {
                 self.session.push_error(CompilerError::TypeCheckerError(
                     TypeCheckerError::GenericArgArityMismatch {
                         src: self.session.get_named_source(),
-                        span: last_segment.span.clone(),
+                        span: last_segment.span,
                         name: last_segment.node.ident.node.name.clone(),
                         expected: generics.len(),
                         found: generic_args.len(),
@@ -311,7 +312,7 @@ impl<'hir> TypeChecker<'hir> {
                 self.session.push_error(CompilerError::TypeCheckerError(
                     TypeCheckerError::GenericArgsOnLeadingSegment {
                         src: self.session.get_named_source(),
-                        span: segment.span.clone(),
+                        span: segment.span,
                     },
                 ));
             }
@@ -380,6 +381,12 @@ impl<'hir> TypeChecker<'hir> {
                         (def_id, args)
                     }
                     Path::Resolved {
+                        res: Res::Def(def_id, DefKind::EnumVariant),
+                        segments,
+                    } => {
+                        todo!("implement struct expression for enum variants")
+                    }
+                    Path::Resolved {
                         res:
                             Res::SelfTy(SelfTyInfo {
                                 self_ty_def: Some(def_id),
@@ -416,7 +423,7 @@ impl<'hir> TypeChecker<'hir> {
                         self.session
                             .push_error(CompilerError::TypeCheckerError(TypeCheckerError::FieldNotFound {
                                 src: self.session.get_named_source(),
-                                span: field_expr.span.clone(),
+                                span: field_expr.span,
                                 field: ident.name.clone(),
                                 ty: self.pretty_print_ty(&Ty::Struct(*def_id, args.clone())),
                             }));
@@ -451,8 +458,8 @@ impl<'hir> TypeChecker<'hir> {
                             self.session.push_error(CompilerError::TypeCheckerError(
                                 TypeCheckerError::FnArgArityMismatch {
                                     src: self.session.get_named_source(),
-                                    expected_span: expr.span.clone(),
-                                    found_span: expr.span.clone(),
+                                    expected_span: expr.span,
+                                    found_span: expr.span,
                                     expected: fn_sig.params.len(),
                                     found: call_expr.args.len(),
                                 },
@@ -480,8 +487,8 @@ impl<'hir> TypeChecker<'hir> {
                             self.session.push_error(CompilerError::TypeCheckerError(
                                 TypeCheckerError::StructArgArityMismatch {
                                     src: self.session.get_named_source(),
-                                    expected_span: expr.span.clone(),
-                                    found_span: expr.span.clone(),
+                                    expected_span: expr.span,
+                                    found_span: expr.span,
                                     expected: fields.len(),
                                     found: call_expr.args.len(),
                                 },
@@ -495,11 +502,14 @@ impl<'hir> TypeChecker<'hir> {
 
                         self.collected_types.type_of.get(&def_id).unwrap().clone()
                     }
+                    Ty::Enum(def_id, generic_args) => {
+                        todo!();
+                    }
                     _ => {
                         self.session
                             .push_error(CompilerError::TypeCheckerError(TypeCheckerError::NotCallable {
                                 src: self.session.get_named_source(),
-                                span: expr.span.clone(),
+                                span: expr.span,
                                 found: self.pretty_print_ty(&callee),
                             }));
                         Ty::Err
@@ -513,7 +523,7 @@ impl<'hir> TypeChecker<'hir> {
 
                 match &receiver {
                     Ty::Struct(def_id, args) => {
-                        let args = self.lower_generic_args(*def_id, &[method_call.method.clone()]);
+                        let args = self.lower_generic_args(*def_id, slice::from_ref(&method_call.method));
                         let impls = self.collected_types.impls_of.get(def_id).unwrap();
                         let assoc_item = impls
                             .iter()
@@ -528,8 +538,8 @@ impl<'hir> TypeChecker<'hir> {
                             self.session.push_error(CompilerError::TypeCheckerError(
                                 TypeCheckerError::FnArgArityMismatch {
                                     src: self.session.get_named_source(),
-                                    expected_span: expr.span.clone(),
-                                    found_span: expr.span.clone(),
+                                    expected_span: expr.span,
+                                    found_span: expr.span,
                                     expected: fn_sig.params.len(),
                                     found: method_call.args.len(),
                                 },
@@ -576,8 +586,8 @@ impl<'hir> TypeChecker<'hir> {
                     self.session.push_error(CompilerError::TypeCheckerError(
                         TypeCheckerError::ExpectedStructInFieldAccess {
                             src: self.session.get_named_source(),
-                            span: field_expr.field.span.clone(),
-                            found: base_str.clone(),
+                            span: field_expr.field.span,
+                            found: base_str,
                         },
                     ));
                     return Ty::Err;
@@ -588,7 +598,7 @@ impl<'hir> TypeChecker<'hir> {
                     self.session
                         .push_error(CompilerError::TypeCheckerError(TypeCheckerError::FieldNotFound {
                             src: self.session.get_named_source(),
-                            span: field_expr.field.span.clone(),
+                            span: field_expr.field.span,
                             field: field_expr.field.node.name.clone(),
                             ty: base_str,
                         }));
@@ -617,12 +627,16 @@ impl<'hir> TypeChecker<'hir> {
                                 let args = self.lower_generic_args(*def_id, segments);
                                 Ty::Fn(*def_id, args)
                             }
+                            Res::Def(def_id, DefKind::EnumVariant) => {
+                                let args = vec![];
+                                Ty::Enum(*def_id, args)
+                            }
                             Res::Def(def_id, def_kind) => todo!(),
                             Res::PrimTy(prim_ty) => {
                                 self.session.push_error(CompilerError::TypeCheckerError(
                                     TypeCheckerError::ExpectedValueType {
                                         src: self.session.get_named_source(),
-                                        span: path.span.clone(),
+                                        span: path.span,
                                     },
                                 ));
                                 Ty::Err
@@ -655,8 +669,8 @@ impl<'hir> TypeChecker<'hir> {
                             .clone();
 
                         // TODO: for now only associated functions
-                        let args = self.lower_generic_args(*def_id, &unresolved_segments);
-                        Ty::Fn(*&assoc_item.def_id, args)
+                        let args = self.lower_generic_args(*def_id, unresolved_segments);
+                        Ty::Fn(assoc_item.def_id, args)
                     }
                     Res::SelfTy(SelfTyInfo {
                         impl_or_trait_def: def_id,
@@ -666,7 +680,7 @@ impl<'hir> TypeChecker<'hir> {
 
                         let generics_count = self.generics_of(*def_id).len();
                         let args = self.identity_args(generics_count);
-                        let ty = self.instantiate(&ty, &args).clone();
+                        let ty = self.instantiate(&ty, &args);
 
                         match unresolved_segments.len() {
                             0 => ty,
@@ -722,7 +736,7 @@ impl<'hir> TypeChecker<'hir> {
 
                 let then_branch = self.check_block(&if_expr.then_branch);
                 let else_ty = match &if_expr.else_branch {
-                    Some(block) => self.check_block(&block),
+                    Some(block) => self.check_block(block),
                     None => Ty::Never,
                 };
                 self.unify(then_branch.clone(), else_ty);
@@ -768,6 +782,20 @@ impl<'hir> TypeChecker<'hir> {
             (Ty::Struct(found_def_id, generic_args), Ty::Struct(expected_def_id, generic_params))
                 if found_def_id == expected_def_id =>
             {
+                for (generic_arg, generic_param) in generic_args.into_iter().zip(generic_params) {
+                    match (generic_arg, generic_param) {
+                        (GenericArg::Type(arg), GenericArg::Type(param)) => self.unify(arg, param),
+                        (GenericArg::Const(_), GenericArg::Const(_)) => todo!(),
+                        _ => panic!("should be filtered out before"),
+                    }
+                }
+            }
+            (Ty::Enum(found_def_id, generic_args), Ty::Enum(expected_def_id, generic_params)) => {
+                let enum_def = self.collected_types.enums.get(&expected_def_id).unwrap();
+                if !enum_def.variants.iter().any(|variant| variant.def_id == found_def_id) {
+                    panic!("unification failed: variant not found in enum_def")
+                }
+
                 for (generic_arg, generic_param) in generic_args.into_iter().zip(generic_params) {
                     match (generic_arg, generic_param) {
                         (GenericArg::Type(arg), GenericArg::Type(param)) => self.unify(arg, param),

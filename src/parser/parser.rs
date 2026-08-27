@@ -1056,10 +1056,7 @@ impl<'a> Parser<'a> {
                 }
             }
 
-            _ => match self.parse_path() {
-                Ok(path) => Ty::Path(path),
-                Err(err) => return Err(err),
-            },
+            _ => Ty::Path(self.parse_path()?),
         };
         Ok(AstNode::new(ty, lo.to(self.previous().span)))
     }

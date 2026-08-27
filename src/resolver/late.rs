@@ -532,7 +532,7 @@ impl Visitor for LateResolver<'_, '_> {
     }
 
     fn visit_generic_param(&mut self, generic_param: &AstNode<GenericParam>) {
-        let def_id = self.r.defs.get_def_from_ast(generic_param.ast_id).unwrap().clone();
+        let def_id = *self.r.defs.get_def_from_ast(generic_param.ast_id).unwrap();
         self.innermost_rib().insert(
             generic_param.node.ident.node.clone(),
             Res::Def(def_id, DefKind::GenericParam),

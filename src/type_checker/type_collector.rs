@@ -182,7 +182,7 @@ impl<'hir> TypeCollector<'hir> {
                     self.collected_types.generics_of.insert(def_id, generic_params);
 
                     let self_ty = self.lower_ty(&impl_decl.self_ty);
-                    self.collected_types.type_of.insert(def_id, self_ty.clone());
+                    self.collected_types.type_of.insert(def_id, self_ty);
 
                     self.collect_assoc_items(&impl_decl.items);
                 }
@@ -268,7 +268,7 @@ impl<'hir> TypeCollector<'hir> {
                         self.collecting.insert(ty_alias.node.def_id, CollectState::Done);
                     }
                 }
-            };
+            }
         }
         self.item_def_id = orig_item_def_id;
     }
@@ -335,7 +335,7 @@ impl<'hir> TypeCollector<'hir> {
                                 self.session.push_error(CompilerError::TypeCheckerError(
                                     TypeCheckerError::GenericArgArityMismatch {
                                         src: self.session.get_named_source(),
-                                        span: last_segment.span.clone(),
+                                        span: last_segment.span,
                                         name: last_segment.node.ident.node.name.clone(),
                                         expected: generics.params.len(),
                                         found: args.len(),

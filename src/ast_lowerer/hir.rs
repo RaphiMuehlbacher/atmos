@@ -115,6 +115,7 @@ pub struct AssociatedItem {
 }
 
 impl AssociatedItem {
+    #[must_use]
     pub fn ident(&self) -> Ident {
         match &self.kind {
             AssociatedItemKind::Fn(fn_sig, _) => fn_sig.node.ident.node.clone(),
