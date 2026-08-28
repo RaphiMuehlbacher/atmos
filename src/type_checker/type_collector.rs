@@ -163,6 +163,7 @@ impl<'hir> TypeCollector<'hir> {
                         .variants
                         .iter()
                         .map(|variant| Variant {
+                            enum_def: def_id,
                             def_id: variant.node.def_id,
                             fields: self.collect_fields(&variant.node.data),
                         })
@@ -381,7 +382,7 @@ impl<'hir> TypeCollector<'hir> {
                             ty::Ty::GenericParam(index)
                         }
                         DefKind::StructField
-                        | DefKind::EnumVariant
+                        | DefKind::EnumVariant { .. }
                         | DefKind::Trait
                         | DefKind::Mod
                         | DefKind::Impl

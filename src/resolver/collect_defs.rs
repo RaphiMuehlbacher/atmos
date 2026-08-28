@@ -1,23 +1,32 @@
 use crate::Resolver;
 use crate::parser::ast::{AssociatedItem, AstNode, EnumVariant, FieldDef, GenericParam, Item};
 use crate::resolver::defs::DefKind;
-use crate::resolver::visitor;
+use crate::resolver::{DefId, visitor};
 
 pub struct DefCollector<'a, 'r> {
     resolver: &'a mut Resolver<'r>,
+    current_enum_def: Option<DefId>,
 }
 
 impl<'a, 'r> DefCollector<'a, 'r> {
     pub fn new(resolver: &'a mut Resolver<'r>) -> Self {
-        Self { resolver }
+        Self {
+            resolver,
+            current_enum_def: None,
+        }
     }
 }
 
 impl visitor::Visitor for DefCollector<'_, '_> {
     fn visit_item(&mut self, item: &AstNode<Item>) {
         let def_kind = DefKind::from(&item.node);
-        self.resolver.defs.insert(item.ast_id, def_kind);
+
+        let prev_item = self.current_enum_def.take();
+        let def_id = self.resolver.defs.insert(item.ast_id, def_kind);
+        self.current_enum_def = Some(def_id);
+
         visitor::walk_item(self, item);
+        self.current_enum_def = prev_item
     }
 
     fn visit_generic_param(&mut self, generic_param: &AstNode<GenericParam>) {
@@ -33,7 +42,12 @@ impl visitor::Visitor for DefCollector<'_, '_> {
     }
 
     fn visit_enum_variant(&mut self, enum_variant: &AstNode<EnumVariant>) {
-        self.resolver.defs.insert(enum_variant.ast_id, DefKind::EnumVariant);
+        self.resolver.defs.insert(
+            enum_variant.ast_id,
+            DefKind::EnumVariant {
+                enum_def: self.current_enum_def.unwrap(),
+            },
+        );
 
         visitor::walk_enum_variant(self, enum_variant);
     }

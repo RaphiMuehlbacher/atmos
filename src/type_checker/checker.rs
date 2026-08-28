@@ -196,7 +196,7 @@ impl<'hir> TypeChecker<'hir> {
                     Ty::Enum(*def_id, args)
                 }
                 DefKind::StructField => todo!(),
-                DefKind::EnumVariant => panic!("enum variants in type position not supported"),
+                DefKind::EnumVariant { .. } => panic!("enum variants in type position not supported"),
                 DefKind::Trait => todo!(),
                 DefKind::Mod => todo!(),
                 DefKind::Impl => todo!(),
@@ -381,10 +381,11 @@ impl<'hir> TypeChecker<'hir> {
                         (def_id, args)
                     }
                     Path::Resolved {
-                        res: Res::Def(def_id, DefKind::EnumVariant),
+                        res: Res::Def(_, DefKind::EnumVariant { enum_def }),
                         segments,
                     } => {
-                        todo!("implement struct expression for enum variants")
+                        let args = self.lower_generic_args(*enum_def, segments);
+                        (enum_def, args)
                     }
                     Path::Resolved {
                         res:
@@ -627,9 +628,9 @@ impl<'hir> TypeChecker<'hir> {
                                 let args = self.lower_generic_args(*def_id, segments);
                                 Ty::Fn(*def_id, args)
                             }
-                            Res::Def(def_id, DefKind::EnumVariant) => {
+                            Res::Def(_, DefKind::EnumVariant { enum_def }) => {
                                 let args = vec![];
-                                Ty::Enum(*def_id, args)
+                                Ty::Enum(*enum_def, args)
                             }
                             Res::Def(def_id, def_kind) => todo!(),
                             Res::PrimTy(prim_ty) => {

@@ -77,6 +77,7 @@ impl InferTy {
 
 #[derive(Clone, Debug)]
 pub struct Variant {
+    pub enum_def: DefId,
     pub def_id: DefId,
     pub fields: Vec<StructField>,
 }
