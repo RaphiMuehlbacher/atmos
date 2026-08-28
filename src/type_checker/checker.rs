@@ -372,75 +372,133 @@ impl<'hir> TypeChecker<'hir> {
         match &expr.node {
             hir::Expr::Array(exprs) => todo!(),
             hir::Expr::Struct(struct_expr) => {
-                let (def_id, args) = match &struct_expr.path.node {
-                    Path::Resolved {
-                        res: Res::Def(def_id, DefKind::Struct),
-                        segments,
-                    } => {
-                        let args = self.lower_generic_args(*def_id, segments);
-                        (def_id, args)
+                if let Path::Resolved {
+                    res: Res::Def(variant_def_id, DefKind::EnumVariant { enum_def_id }),
+                    segments,
+                } = &struct_expr.path.node
+                {
+                    let args = self.lower_generic_args(*enum_def_id, segments);
+                    let enum_def = self.collected_types.enums.get(enum_def_id).unwrap().clone();
+
+                    let variant = enum_def
+                        .variants
+                        .iter()
+                        .find(|variant| variant.def_id == *variant_def_id)
+                        .unwrap();
+
+                    let fields: HashMap<_, _> = variant
+                        .fields
+                        .iter()
+                        .map(|field| {
+                            (
+                                &field.ident,
+                                self.collected_types.type_of.get(&field.def_id).unwrap().clone(),
+                            )
+                        })
+                        .collect();
+
+                    let mut seen = HashSet::<&Ident>::new();
+                    for field_expr in &struct_expr.fields {
+                        let ident = &field_expr.node.ident.node;
+
+                        let Some(field_ty) = fields.get(ident) else {
+                            self.session
+                                .push_error(CompilerError::TypeCheckerError(TypeCheckerError::FieldNotFound {
+                                    src: self.session.get_named_source(),
+                                    span: field_expr.span,
+                                    field: ident.name.clone(),
+                                    ty: self.pretty_print_ty(&Ty::Enum(*enum_def_id, args.clone())),
+                                }));
+                            continue;
+                        };
+                        let field_ty = field_ty.clone();
+
+                        let field_ty = self.instantiate(&field_ty, &args);
+
+                        if seen.contains(ident) {
+                            todo!("emit error for field specified more than once");
+                        }
+                        seen.insert(ident);
+
+                        let found_ty = self.check_expression(&field_expr.node.expr);
+                        self.unify(found_ty, field_ty);
                     }
-                    Path::Resolved {
-                        res: Res::Def(_, DefKind::EnumVariant { enum_def }),
-                        segments,
-                    } => {
-                        let args = self.lower_generic_args(*enum_def, segments);
-                        (enum_def, args)
+
+                    for _ in fields.keys().filter(|ident| !seen.contains(*ident)) {
+                        todo!("emit error for missing field")
                     }
-                    Path::Resolved {
-                        res:
-                            Res::SelfTy(SelfTyInfo {
-                                self_ty_def: Some(def_id),
-                                ..
-                            }),
-                        segments,
-                    } => {
-                        self.prohibit_generic_args(segments);
-                        let generics = self.generics_of(*def_id);
+                    Ty::Enum(*enum_def_id, args)
+                } else {
+                    let (def_id, args) = match &struct_expr.path.node {
+                        Path::Resolved {
+                            res: Res::Def(def_id, DefKind::Struct),
+                            segments,
+                        } => {
+                            let args = self.lower_generic_args(*def_id, segments);
+                            (def_id, args)
+                        }
+                        Path::Resolved {
+                            res:
+                                Res::SelfTy(SelfTyInfo {
+                                    self_ty_def: Some(def_id),
+                                    ..
+                                }),
+                            segments,
+                        } => {
+                            self.prohibit_generic_args(segments);
+                            let generics = self.generics_of(*def_id);
 
-                        let args = self.identity_args(generics.len());
-                        (def_id, args)
-                    }
-                    _ => panic!("shouldn't be possible"),
-                };
-
-                let struct_def = self.collected_types.structs.get(def_id).unwrap().clone();
-                let struct_fields: HashMap<_, _> = struct_def
-                    .fields
-                    .into_iter()
-                    .map(|field| {
-                        (
-                            field.ident,
-                            self.collected_types.type_of.get(&field.def_id).unwrap().clone(),
-                        )
-                    })
-                    .collect();
-
-                let mut seen = HashSet::<&Ident>::new();
-                for field_expr in &struct_expr.fields {
-                    let ident = &field_expr.node.ident.node;
-
-                    let Some(field_ty) = struct_fields.get(ident) else {
-                        self.session
-                            .push_error(CompilerError::TypeCheckerError(TypeCheckerError::FieldNotFound {
-                                src: self.session.get_named_source(),
-                                span: field_expr.span,
-                                field: ident.name.clone(),
-                                ty: self.pretty_print_ty(&Ty::Struct(*def_id, args.clone())),
-                            }));
-                        continue;
+                            let args = self.identity_args(generics.len());
+                            (def_id, args)
+                        }
+                        _ => panic!("shouldn't be possible"),
                     };
                     let field_ty = field_ty.clone();
 
-                    let field_ty = self.instantiate(&field_ty, &args);
+                    let struct_def = self.collected_types.structs.get(def_id).unwrap().clone();
+                    let struct_fields: HashMap<_, _> = struct_def
+                        .fields
+                        .into_iter()
+                        .map(|field| {
+                            (
+                                field.ident,
+                                self.collected_types.type_of.get(&field.def_id).unwrap().clone(),
+                            )
+                        })
+                        .collect();
 
-                    if seen.contains(ident) {
-                        todo!("emit error for field specified more than once");
+                    let mut seen = HashSet::<&Ident>::new();
+                    for field_expr in &struct_expr.fields {
+                        let ident = &field_expr.node.ident.node;
+
+                        let Some(field_ty) = struct_fields.get(ident) else {
+                            self.session
+                                .push_error(CompilerError::TypeCheckerError(TypeCheckerError::FieldNotFound {
+                                    src: self.session.get_named_source(),
+                                    span: field_expr.span,
+                                    field: ident.name.clone(),
+                                    ty: self.pretty_print_ty(&Ty::Struct(*def_id, args.clone())),
+                                }));
+                            continue;
+                        };
+                        let field_ty = field_ty.clone();
+
+                        let field_ty = self.instantiate(&field_ty, &args);
+
+                        if seen.contains(ident) {
+                            todo!("emit error for field specified more than once");
+                        }
+                        seen.insert(ident);
+
+                        let found_ty = self.check_expression(&field_expr.node.expr);
+                        self.unify(found_ty, field_ty);
                     }
                     seen.insert(ident);
 
-                    let found_ty = self.check_expression(&field_expr.node.expr);
-                    self.unify(found_ty, field_ty);
+                    for _ in struct_fields.keys().filter(|ident| !seen.contains(ident)) {
+                        todo!("emit error for missing field")
+                    }
+                    Ty::Struct(*def_id, args)
                 }
 
                 for _ in struct_fields.keys().filter(|ident| !seen.contains(ident)) {
@@ -628,7 +686,7 @@ impl<'hir> TypeChecker<'hir> {
                                 let args = self.lower_generic_args(*def_id, segments);
                                 Ty::Fn(*def_id, args)
                             }
-                            Res::Def(_, DefKind::EnumVariant { enum_def }) => {
+                            Res::Def(_, DefKind::EnumVariant { enum_def_id }) => {
                                 let args = vec![];
                                 Ty::Enum(*enum_def, args)
                             }
@@ -791,12 +849,9 @@ impl<'hir> TypeChecker<'hir> {
                     }
                 }
             }
-            (Ty::Enum(found_def_id, generic_args), Ty::Enum(expected_def_id, generic_params)) => {
-                let enum_def = self.collected_types.enums.get(&expected_def_id).unwrap();
-                if !enum_def.variants.iter().any(|variant| variant.def_id == found_def_id) {
-                    panic!("unification failed: variant not found in enum_def")
-                }
-
+            (Ty::Enum(found_def_id, generic_args), Ty::Enum(expected_def_id, generic_params))
+                if found_def_id == expected_def_id =>
+            {
                 for (generic_arg, generic_param) in generic_args.into_iter().zip(generic_params) {
                     match (generic_arg, generic_param) {
                         (GenericArg::Type(arg), GenericArg::Type(param)) => self.unify(arg, param),

@@ -71,7 +71,7 @@ pub enum DefKind {
     Struct,
     StructField,
     Enum,
-    EnumVariant { enum_def: DefId },
+    EnumVariant { enum_def_id: DefId },
     Trait,
     Mod,
     Impl,
