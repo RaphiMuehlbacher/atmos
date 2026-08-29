@@ -227,7 +227,16 @@ impl<'hir> TypeChecker<'hir> {
                 PrimTy::Bool => ty::Ty::Bool,
                 PrimTy::Str => ty::Ty::Str,
             },
-            Res::SelfTy(self_ty_info) => todo!(),
+            Res::SelfTy(SelfTyInfo {
+                impl_or_trait_def: def_id,
+                ..
+            }) => {
+                self.prohibit_generic_args(segments);
+                let ty = self.collected_types.type_of.get(def_id).unwrap().clone();
+                let generics_count = self.generics_of(*def_id).len();
+                let args = self.identity_args(generics_count);
+                self.instantiate(&ty, &args)
+            }
             Res::Err => todo!(),
         }
     }
@@ -806,21 +815,21 @@ impl<'hir> TypeChecker<'hir> {
                             .clone();
 
                         // TODO: for now only associated functions
-                        let args = self.lower_generic_args(*def_id, unresolved_segments, GenericArgPosition::Value);
+                        let args =
+                            self.lower_generic_args(assoc_item.def_id, unresolved_segments, GenericArgPosition::Value);
                         Ty::Fn(assoc_item.def_id, args)
                     }
                     Res::SelfTy(SelfTyInfo {
                         impl_or_trait_def: def_id,
                         ..
                     }) => {
-                        let ty = self.collected_types.type_of.get(def_id).unwrap().clone();
-
-                        let generics_count = self.generics_of(*def_id).len();
-                        let args = self.identity_args(generics_count);
-                        let ty = self.instantiate(&ty, &args);
-
                         match unresolved_segments.len() {
-                            0 => ty,
+                            0 => {
+                                let ty = self.collected_types.type_of.get(def_id).unwrap().clone();
+                                let generics_count = self.generics_of(*def_id).len();
+                                let args = self.identity_args(generics_count);
+                                self.instantiate(&ty, &args)
+                            }
                             1 => {
                                 let item = self
                                     .collected_types
@@ -832,12 +841,12 @@ impl<'hir> TypeChecker<'hir> {
                                     .map(|assoc_def_id| self.collected_types.type_of.get(&assoc_def_id.def_id).unwrap())
                                     .unwrap();
 
-                                // TODO: for now no generic params on methods
-                                // to support it combine the generics of `Self` and `item`
-
                                 // TODO: for now only associated functions
-                                let Ty::Fn(def_id, _) = item else { panic!() };
-                                Ty::Fn(*def_id, args)
+                                let Ty::Fn(def_id, _) = *item else { panic!() };
+                                let count = self.generics_of(def_id).len();
+                                let args = self.identity_args(count);
+
+                                Ty::Fn(def_id, args)
                             }
                             _ => panic!("currently only one unresolved segment supported"),
                         }

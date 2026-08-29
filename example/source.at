@@ -1,12 +1,35 @@
+struct Wrapper<T> {
+    value: T,
+}
+
+impl<T> Wrapper<T> {
+    fn test(self: Self) {
+        let inner: T = self.value;
+    }
+}
+
+/*
 enum Option<T> {
     Some(T),
     None
+}
+
+impl<T> Option<T> {
+    fn test<A>(self: Self, a: A) -> A {
+        a
+    }
+
+    fn a<U>(self: Self, u: U) {
+        Self::test(u);
+    }
+
 }
 
 fn main() {
     let a: Option<i32> = Option::Some(3);
     let b: Option<bool> = Option::None;
 }
+*/
 
 /*
 enum Option<T> {
