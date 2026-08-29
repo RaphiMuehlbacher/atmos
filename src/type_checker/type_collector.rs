@@ -314,7 +314,7 @@ impl<'hir> TypeCollector<'hir> {
         match &hir_ty.node {
             hir::Ty::Path(path) => match &path.node {
                 Path::Resolved { res, segments } => match res {
-                    Res::Local(_) => todo!("can this happen?"),
+                    Res::Local(_) => todo!("locals cannot be in type position"),
                     Res::Def(def_id, def_kind) => match def_kind {
                         DefKind::Struct => {
                             let last_segment = &segments.last().unwrap();

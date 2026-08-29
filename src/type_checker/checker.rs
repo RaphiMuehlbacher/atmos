@@ -555,6 +555,7 @@ impl<'hir> TypeChecker<'hir> {
             }
             hir::Expr::Call(call_expr) => {
                 let callee = self.check_expression(&call_expr.callee);
+                let callee = self.deeply_resolve(callee);
 
                 match callee {
                     Ty::Fn(def_id, generic_args) => {
