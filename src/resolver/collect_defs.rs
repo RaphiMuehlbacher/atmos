@@ -45,7 +45,7 @@ impl visitor::Visitor for DefCollector<'_, '_> {
         self.resolver.defs.insert(
             enum_variant.ast_id,
             DefKind::EnumVariant {
-                enum_def: self.current_enum_def.unwrap(),
+                enum_def_id: self.current_enum_def.unwrap(),
             },
         );
 

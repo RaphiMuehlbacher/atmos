@@ -346,7 +346,27 @@ impl<'hir> TypeCollector<'hir> {
 
                             ty::Ty::Struct(*def_id, args)
                         }
-                        DefKind::Enum | DefKind::Function | DefKind::ExternFn | DefKind::AssocFn => {
+                        DefKind::Enum => {
+                            let last_segment = &segments.last().unwrap();
+                            let args = &last_segment.node.args;
+                            let generics = self.collected_types.generics_of.get(def_id).unwrap();
+                            let args = self.lower_generic_args(args);
+
+                            if generics.params.len() != args.len() {
+                                self.session.push_error(CompilerError::TypeCheckerError(
+                                    TypeCheckerError::GenericArgArityMismatch {
+                                        src: self.session.get_named_source(),
+                                        span: last_segment.span,
+                                        name: last_segment.node.ident.node.name.clone(),
+                                        expected: generics.params.len(),
+                                        found: args.len(),
+                                    },
+                                ));
+                            }
+
+                            ty::Ty::Enum(*def_id, args)
+                        }
+                        DefKind::Function | DefKind::ExternFn | DefKind::AssocFn => {
                             // TODO: handle generic args
                             self.collected_types.type_of.get(def_id).unwrap().clone()
                         }

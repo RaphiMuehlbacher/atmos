@@ -3,18 +3,9 @@ enum Option<T> {
     None
 }
 
-enum Variant {
-    Unit,
-    Struct { fields: i32 },
-}
-
-
 fn main() {
-    let variant: Variant = Variant::Unit;
-    let variant2: Variant = Variant::Struct {
-        fields: 2,
-    };
-    // let a = Option::Some(i32);
+    let a: Option<i32> = Option::Some(3);
+    let b: Option<bool> = Option::None;
 }
 
 /*
