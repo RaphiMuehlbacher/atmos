@@ -51,21 +51,14 @@ impl visitor::Visitor for DefCollector<'_, '_> {
 
     fn visit_assoc_item(&mut self, assoc_item: &AstNode<AssociatedItem>) {
         let def_kind = match &assoc_item.node {
-            AssociatedItem::Fn(fn_sig, block) => {
-                visitor::walk_fn_sig(self, fn_sig);
-
-                if let Some(block) = block {
-                    visitor::walk_block(self, block);
-                }
-
-                DefKind::AssocFn
-            }
-            AssociatedItem::Type(ty_alias) => {
-                visitor::walk_assoc_ty_alias(self, ty_alias);
-                DefKind::AssocTypeAlias
-            }
+            AssociatedItem::Fn(_, _) => DefKind::AssocFn,
+            AssociatedItem::Type(_) => DefKind::AssocTypeAlias,
         };
 
-        self.r.defs.insert(assoc_item.ast_id, def_kind, self.def_stack.last());
+        let def_id = self.r.defs.insert(assoc_item.ast_id, def_kind, self.def_stack.last());
+
+        self.def_stack.push(def_id);
+        visitor::walk_assoc_item(self, assoc_item);
+        self.def_stack.pop();
     }
 }

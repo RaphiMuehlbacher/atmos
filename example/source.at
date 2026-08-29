@@ -3,8 +3,8 @@ struct Wrapper<T> {
 }
 
 impl<T> Wrapper<T> {
-    fn test(self: Self) {
-        let inner: T = self.value;
+    fn test<A>(a: A) {
+        let b: A = a;
     }
 }
 
