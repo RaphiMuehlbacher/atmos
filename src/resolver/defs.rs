@@ -12,6 +12,7 @@ pub struct DefinitionMap {
     pub resolutions: HashMap<AstId, Res<AstId>>,
     pub ast_to_def: HashMap<AstId, DefId>,
     pub partial_res: HashMap<AstId, PartialRes>,
+    pub parent_map: HashMap<DefId, DefId>,
     next_def_id: DefId,
 }
 
@@ -22,10 +23,13 @@ impl DefinitionMap {
         current
     }
 
-    pub fn insert(&mut self, id: AstId, kind: DefKind) -> DefId {
+    pub fn insert(&mut self, id: AstId, kind: DefKind, parent: Option<&DefId>) -> DefId {
         let def_id = self.increment_def_id();
         self.definitions.insert(def_id, Definition::new(def_id, kind));
         self.ast_to_def.insert(id, def_id);
+        if let Some(parent_def_id) = parent {
+            self.parent_map.insert(def_id, *parent_def_id);
+        }
         def_id
     }
 
@@ -71,7 +75,7 @@ pub enum DefKind {
     Struct,
     StructField,
     Enum,
-    EnumVariant { enum_def_id: DefId },
+    EnumVariant,
     Trait,
     Mod,
     Impl,

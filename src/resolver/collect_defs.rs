@@ -4,16 +4,13 @@ use crate::resolver::defs::DefKind;
 use crate::resolver::{DefId, visitor};
 
 pub struct DefCollector<'a, 'r> {
-    resolver: &'a mut Resolver<'r>,
-    current_enum_def: Option<DefId>,
+    r: &'a mut Resolver<'r>,
+    def_stack: Vec<DefId>,
 }
 
 impl<'a, 'r> DefCollector<'a, 'r> {
-    pub fn new(resolver: &'a mut Resolver<'r>) -> Self {
-        Self {
-            resolver,
-            current_enum_def: None,
-        }
+    pub fn new(r: &'a mut Resolver<'r>) -> Self {
+        Self { r, def_stack: vec![] }
     }
 }
 
@@ -21,33 +18,33 @@ impl visitor::Visitor for DefCollector<'_, '_> {
     fn visit_item(&mut self, item: &AstNode<Item>) {
         let def_kind = DefKind::from(&item.node);
 
-        let prev_item = self.current_enum_def.take();
-        let def_id = self.resolver.defs.insert(item.ast_id, def_kind);
-        self.current_enum_def = Some(def_id);
+        let def_id = self.r.defs.insert(item.ast_id, def_kind, self.def_stack.last());
 
+        self.def_stack.push(def_id);
         visitor::walk_item(self, item);
-        self.current_enum_def = prev_item
+        self.def_stack.pop();
     }
 
     fn visit_generic_param(&mut self, generic_param: &AstNode<GenericParam>) {
-        self.resolver.defs.insert(generic_param.ast_id, DefKind::GenericParam);
+        self.r
+            .defs
+            .insert(generic_param.ast_id, DefKind::GenericParam, self.def_stack.last());
 
         visitor::walk_generic_param(self, generic_param);
     }
 
     fn visit_struct_field_def(&mut self, struct_field_def: &AstNode<FieldDef>) {
-        self.resolver.defs.insert(struct_field_def.ast_id, DefKind::StructField);
+        self.r
+            .defs
+            .insert(struct_field_def.ast_id, DefKind::StructField, self.def_stack.last());
 
         visitor::walk_struct_field_def(self, struct_field_def);
     }
 
     fn visit_enum_variant(&mut self, enum_variant: &AstNode<EnumVariant>) {
-        self.resolver.defs.insert(
-            enum_variant.ast_id,
-            DefKind::EnumVariant {
-                enum_def_id: self.current_enum_def.unwrap(),
-            },
-        );
+        self.r
+            .defs
+            .insert(enum_variant.ast_id, DefKind::EnumVariant, self.def_stack.last());
 
         visitor::walk_enum_variant(self, enum_variant);
     }
@@ -69,6 +66,6 @@ impl visitor::Visitor for DefCollector<'_, '_> {
             }
         };
 
-        self.resolver.defs.insert(assoc_item.ast_id, def_kind);
+        self.r.defs.insert(assoc_item.ast_id, def_kind, self.def_stack.last());
     }
 }

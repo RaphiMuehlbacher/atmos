@@ -102,11 +102,7 @@ impl<'ast> AstLowerer<'ast> {
                     .iter()
                     .map(|g| self.lower_generic_param(g))
                     .collect();
-                let items = trait_item
-                    .items
-                    .iter()
-                    .map(|i| self.lower_associated_item(i, def_id))
-                    .collect();
+                let items = trait_item.items.iter().map(|i| self.lower_associated_item(i)).collect();
                 (
                     hir::Item::Trait(hir::TraitDecl {
                         def_id,
@@ -128,11 +124,7 @@ impl<'ast> AstLowerer<'ast> {
                 let generics = impl_item.generics.iter().map(|g| self.lower_generic_param(g)).collect();
                 let self_ty = self.lower_type(&impl_item.self_ty);
                 let of_trait = impl_item.for_trait.as_ref().map(|t| self.lower_path(t));
-                let items = impl_item
-                    .items
-                    .iter()
-                    .map(|i| self.lower_associated_item(i, def_id))
-                    .collect();
+                let items = impl_item.items.iter().map(|i| self.lower_associated_item(i)).collect();
                 (
                     hir::Item::Impl(hir::ImplDecl {
                         def_id,
@@ -720,11 +712,7 @@ impl<'ast> AstLowerer<'ast> {
         hir_node
     }
 
-    fn lower_associated_item(
-        &mut self,
-        item: &AstNode<ast::AssociatedItem>,
-        parent: DefId,
-    ) -> HirNode<hir::AssociatedItem> {
+    fn lower_associated_item(&mut self, item: &AstNode<ast::AssociatedItem>) -> HirNode<hir::AssociatedItem> {
         let def_id = *self.defs.ast_to_def.get(&item.ast_id).unwrap();
         let hir_item = match &item.node {
             ast::AssociatedItem::Fn(sig, body) => {
@@ -732,7 +720,6 @@ impl<'ast> AstLowerer<'ast> {
                 let body = body.as_ref().map(|b| self.lower_block_expr(b));
                 hir::AssociatedItem {
                     def_id,
-                    parent,
                     kind: hir::AssociatedItemKind::Fn(sig, body),
                 }
             }
@@ -747,7 +734,6 @@ impl<'ast> AstLowerer<'ast> {
                 let ty = ty_alias.node.ty.as_ref().map(|t| self.lower_type(t));
                 hir::AssociatedItem {
                     def_id,
-                    parent,
                     kind: hir::AssociatedItemKind::Type(HirNode::new(
                         hir::AssocTyAlias {
                             def_id,

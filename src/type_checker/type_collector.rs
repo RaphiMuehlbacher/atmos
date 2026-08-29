@@ -17,10 +17,10 @@ pub struct TypeCollector<'hir> {
     session: &'hir Session,
     hir_nodes: &'hir HashMap<HirId, Node>,
     def_to_hir: &'hir HashMap<DefId, HirId>,
+    parent_map: &'hir HashMap<DefId, DefId>,
 
     collected_types: CollectedTypes,
     collecting: HashMap<DefId, CollectState>,
-    item_def_id: Option<DefId>,
 }
 
 enum CollectState {
@@ -33,14 +33,15 @@ impl<'hir> TypeCollector<'hir> {
         session: &'hir Session,
         hir_nodes: &'hir HashMap<HirId, Node>,
         def_to_hir: &'hir HashMap<DefId, HirId>,
+        parent_map: &'hir HashMap<DefId, DefId>,
     ) -> Self {
         Self {
             session,
             hir_nodes,
             def_to_hir,
+            parent_map,
             collected_types: CollectedTypes::new(),
             collecting: HashMap::new(),
-            item_def_id: None,
         }
     }
 
@@ -80,17 +81,13 @@ impl<'hir> TypeCollector<'hir> {
         }
 
         for (def_id, hir_id) in self.def_to_hir {
-            self.item_def_id = Some(*def_id);
             let node = self.hir_nodes.get(hir_id).unwrap();
             self.collect_item_def(*def_id, node);
-            self.item_def_id = None;
         }
 
         for (def_id, hir_id) in self.def_to_hir {
-            self.item_def_id = Some(*def_id);
             let node = self.hir_nodes.get(hir_id).unwrap();
             self.collect_types(*def_id, node);
-            self.item_def_id = None;
         }
 
         self.collected_types.clone()
@@ -210,28 +207,21 @@ impl<'hir> TypeCollector<'hir> {
     }
 
     fn collect_assoc_items(&mut self, assoc_items: &[HirNode<AssociatedItem>]) {
-        let orig_item_def_id = self.item_def_id;
-
         for assoc in assoc_items {
-            self.item_def_id = Some(assoc.node.def_id);
-
             let params = match &assoc.node.kind {
                 AssociatedItemKind::Fn(sig, _) => &sig.node.generics.as_slice(),
                 AssociatedItemKind::Type(ty_alias) => &ty_alias.node.generics.as_slice(),
             };
 
-            let parent_generics = self
-                .collected_types
-                .generics_of
-                .get(&orig_item_def_id.unwrap())
-                .unwrap();
+            let parent_def_id = self.parent_map.get(&assoc.node.def_id).unwrap();
+            let parent_generics = self.collected_types.generics_of.get(parent_def_id).unwrap();
 
             assert_eq!(
                 parent_generics.parent, None,
                 "We only support associated items nested one level"
             );
 
-            let generic_params = Generics::with_parent(assoc.node.parent, params, parent_generics.params.len());
+            let generic_params = Generics::with_parent(*parent_def_id, params, parent_generics.params.len());
             self.collected_types
                 .generics_of
                 .insert(assoc.node.def_id, generic_params);
@@ -271,7 +261,6 @@ impl<'hir> TypeCollector<'hir> {
                 }
             }
         }
-        self.item_def_id = orig_item_def_id;
     }
 
     fn lower_generic_params(&self, generic_params: &[HirNode<hir::GenericParam>]) -> GenericArgs {
@@ -280,10 +269,11 @@ impl<'hir> TypeCollector<'hir> {
             .map(|arg| match &arg.node.kind {
                 GenericParamKind::Const(_) => todo!(),
                 GenericParamKind::Type => {
+                    let parent_def_id = self.parent_map.get(&arg.node.def_id).unwrap();
                     let index = self
                         .collected_types
                         .generics_of
-                        .get(&self.item_def_id.unwrap())
+                        .get(parent_def_id)
                         .unwrap()
                         .get_index(arg.node.def_id, &self.collected_types.generics_of);
 
@@ -392,10 +382,11 @@ impl<'hir> TypeCollector<'hir> {
                             }
                         },
                         DefKind::GenericParam => {
+                            let parent_def_id = self.parent_map.get(def_id).unwrap();
                             let index = self
                                 .collected_types
                                 .generics_of
-                                .get(&self.item_def_id.unwrap())
+                                .get(parent_def_id)
                                 .unwrap()
                                 .get_index(*def_id, &self.collected_types.generics_of);
 

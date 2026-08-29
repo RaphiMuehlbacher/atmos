@@ -255,7 +255,7 @@ impl<'a, 'r> LateResolver<'a, 'r> {
 
                     if matches!(
                         def_kind,
-                        DefKind::GenericParam | DefKind::Struct | DefKind::TypeAlias | DefKind::Trait
+                        DefKind::GenericParam { .. } | DefKind::Struct | DefKind::TypeAlias | DefKind::Trait
                     ) {
                         let partial_res = PartialRes::new(Res::Def(def_id, def_kind), segments.len() - 1 - i);
                         self.r.defs.partial_res.insert(path.ast_id, partial_res);
@@ -289,7 +289,7 @@ impl<'a, 'r> LateResolver<'a, 'r> {
 
                             if matches!(
                                 def_kind,
-                                DefKind::GenericParam | DefKind::Struct | DefKind::TypeAlias | DefKind::Trait
+                                DefKind::GenericParam { .. } | DefKind::Struct | DefKind::TypeAlias | DefKind::Trait
                             ) {
                                 let partial_res = PartialRes::new(Res::Def(*def_id, def_kind), segments.len() - 1 - i);
                                 self.r.defs.partial_res.insert(path.ast_id, partial_res);
@@ -533,6 +533,7 @@ impl Visitor for LateResolver<'_, '_> {
 
     fn visit_generic_param(&mut self, generic_param: &AstNode<GenericParam>) {
         let def_id = *self.r.defs.get_def_from_ast(generic_param.ast_id).unwrap();
+
         self.innermost_rib().insert(
             generic_param.node.ident.node.clone(),
             Res::Def(def_id, DefKind::GenericParam),

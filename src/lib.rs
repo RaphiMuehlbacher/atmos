@@ -30,9 +30,9 @@ pub fn compile_source(session: &Session) {
     let mut ast_lowerer = AstLowerer::new(defs, &ast);
     let (hir, hir_nodes, def_to_hir) = ast_lowerer.lower();
 
-    let mut type_collector = TypeCollector::new(session, &hir_nodes, &def_to_hir);
+    let mut type_collector = TypeCollector::new(session, &hir_nodes, &def_to_hir, &defs.parent_map);
     let collected_types = type_collector.collect_items();
 
-    let mut type_checker = TypeChecker::new(session, &def_to_hir, &hir_nodes, collected_types);
+    let mut type_checker = TypeChecker::new(session, &def_to_hir, &hir_nodes, &defs.parent_map, collected_types);
     type_checker.check();
 }

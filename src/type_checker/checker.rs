@@ -49,6 +49,7 @@ pub struct TypeChecker<'hir> {
     collected_types: CollectedTypes,
     def_to_hir: &'hir HashMap<DefId, HirId>,
     hir_nodes: &'hir HashMap<HirId, Node>,
+    parent_map: &'hir HashMap<DefId, DefId>,
     infer_ctxt: InferCtxt,
     return_ty: Option<Ty>,
 }
@@ -58,12 +59,14 @@ impl<'hir> TypeChecker<'hir> {
         session: &'hir Session,
         def_to_hir: &'hir HashMap<DefId, HirId>,
         hir_nodes: &'hir HashMap<HirId, Node>,
+        parent_map: &'hir HashMap<DefId, DefId>,
         collected_types: CollectedTypes,
     ) -> Self {
         Self {
             session,
             def_to_hir,
             hir_nodes,
+            parent_map,
             collected_types,
             infer_ctxt: InferCtxt::default(),
             return_ty: None,
@@ -418,10 +421,11 @@ impl<'hir> TypeChecker<'hir> {
             hir::Expr::Array(exprs) => todo!(),
             hir::Expr::Struct(struct_expr) => {
                 if let Path::Resolved {
-                    res: Res::Def(variant_def_id, DefKind::EnumVariant { enum_def_id }),
+                    res: Res::Def(variant_def_id, DefKind::EnumVariant),
                     segments,
                 } = &struct_expr.path.node
                 {
+                    let enum_def_id = self.parent_map.get(variant_def_id).unwrap();
                     let args = self.lower_generic_args(*enum_def_id, segments, GenericArgPosition::Value);
                     let enum_def = self.collected_types.enums.get(enum_def_id).unwrap().clone();
 
@@ -773,7 +777,8 @@ impl<'hir> TypeChecker<'hir> {
                                 let args = self.lower_generic_args(*def_id, segments, GenericArgPosition::Value);
                                 Ty::Fn(*def_id, args)
                             }
-                            Res::Def(_, DefKind::EnumVariant { enum_def_id }) => {
+                            Res::Def(def_id, DefKind::EnumVariant) => {
+                                let enum_def_id = self.parent_map.get(def_id).unwrap();
                                 let args = self.lower_variant_generic_args(*enum_def_id, segments);
                                 Ty::Enum(*enum_def_id, args)
                             }
