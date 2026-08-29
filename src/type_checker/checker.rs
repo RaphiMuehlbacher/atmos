@@ -217,7 +217,12 @@ impl<'hir> TypeChecker<'hir> {
                 DefKind::ExternFn => todo!(),
                 DefKind::Use => todo!(),
                 DefKind::Const => todo!(),
-                DefKind::GenericParam => todo!(),
+                DefKind::GenericParam => {
+                    let parent_def_id = self.parent_map.get(def_id).unwrap();
+                    let generics = self.generics_of(*parent_def_id);
+                    let index = generics.iter().find(|generic| generic.def_id == *def_id).unwrap().index;
+                    Ty::GenericParam(index)
+                }
                 DefKind::TypeAlias => todo!(),
                 DefKind::AssocTypeAlias => todo!(),
                 DefKind::Function => todo!(),
