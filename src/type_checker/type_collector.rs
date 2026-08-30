@@ -357,8 +357,7 @@ impl<'hir> TypeCollector<'hir> {
                             ty::Ty::Enum(*def_id, args)
                         }
                         DefKind::Function | DefKind::ExternFn | DefKind::AssocFn => {
-                            // TODO: handle generic args
-                            self.collected_types.type_of.get(def_id).unwrap().clone()
+                            panic!("emit error: expected type not function")
                         }
                         DefKind::TypeAlias => match self.collecting.get(def_id) {
                             Some(CollectState::Done) => self.collected_types.type_of.get(def_id).unwrap().clone(),
