@@ -128,7 +128,8 @@ impl<'hir> TypeChecker<'hir> {
 
                     self.check_pattern(&let_stmt.pattern, expected);
                 }
-                Stmt::Item(item) => todo!(),
+                // All items already get checked by iterating over all defs in `check`
+                Stmt::Item(_) => continue,
                 Stmt::Semi(expr) | Stmt::Expr(expr) => {
                     self.check_expression(expr);
                 }
@@ -208,15 +209,18 @@ impl<'hir> TypeChecker<'hir> {
                     let args = self.lower_generic_args(*def_id, segments, GenericArgPosition::Type);
                     Ty::Enum(*def_id, args)
                 }
-                DefKind::StructField => todo!(),
-                DefKind::EnumVariant { .. } => panic!("enum variants in type position not supported"),
-                DefKind::Trait => todo!(),
-                DefKind::Mod => todo!(),
-                DefKind::Impl => todo!(),
-                DefKind::AssocFn => todo!(),
-                DefKind::ExternFn => todo!(),
-                DefKind::Use => todo!(),
-                DefKind::Const => todo!(),
+                DefKind::StructField
+                | DefKind::EnumVariant
+                | DefKind::Trait
+                | DefKind::Mod
+                | DefKind::Impl
+                | DefKind::AssocFn
+                | DefKind::ExternFn
+                | DefKind::Use
+                | DefKind::Const
+                | DefKind::Function => {
+                    panic!("emit error: in type position not supported")
+                }
                 DefKind::GenericParam => {
                     let parent_def_id = self.parent_map.get(def_id).unwrap();
                     let generics = self.generics_of(*parent_def_id);
@@ -224,10 +228,9 @@ impl<'hir> TypeChecker<'hir> {
                     Ty::GenericParam(index)
                 }
                 DefKind::TypeAlias => todo!(),
-                DefKind::AssocTypeAlias => todo!(),
-                DefKind::Function => todo!(),
+                DefKind::AssocTypeAlias => panic!("i think that associated type aliases are always an unresolved path"),
             },
-            Res::Local(ast_id) => todo!(),
+            Res::Local(_) => panic!("emit error: in type position not supported"),
             Res::PrimTy(prim_ty) => match prim_ty {
                 PrimTy::I32 => ty::Ty::I32,
                 PrimTy::U32 => ty::Ty::U32,
