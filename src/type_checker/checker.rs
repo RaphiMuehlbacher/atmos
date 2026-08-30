@@ -581,6 +581,26 @@ impl<'hir> TypeChecker<'hir> {
 
                         self.instantiate(&fn_sig.return_ty, &generic_args)
                     }
+                    Ty::FnPtr(params, return_ty) => {
+                        if call_expr.args.len() != params.len() {
+                            self.session.push_error(CompilerError::TypeCheckerError(
+                                TypeCheckerError::FnArgArityMismatch {
+                                    src: self.session.get_named_source(),
+                                    expected_span: expr.span,
+                                    found_span: expr.span,
+                                    expected: params.len(),
+                                    found: call_expr.args.len(),
+                                },
+                            ));
+                        }
+
+                        for (arg, param) in call_expr.args.iter().zip(&params) {
+                            let arg_ty = self.check_expression(arg);
+                            self.unify(arg_ty, param.clone());
+                        }
+
+                        *return_ty
+                    }
                     Ty::Struct(def_id, generic_args) => {
                         let struct_def = self.collected_types.structs.get(&def_id).unwrap().clone();
 
@@ -964,6 +984,27 @@ impl<'hir> TypeChecker<'hir> {
                         "unification failed: found: GenericParam({found_idx}), expected: GenericParam({expected_idx})"
                     );
                 }
+            }
+            (Ty::Fn(def_id, generic_args), Ty::FnPtr(params, return_ty)) => {
+                let fn_sig = self.collected_types.fn_sig.get(&def_id).unwrap().clone();
+                if fn_sig.params.len() != params.len() {
+                    self.session
+                        .push_error(CompilerError::TypeCheckerError(TypeCheckerError::FnArgArityMismatch {
+                            src: self.session.get_named_source(),
+                            expected_span: SourceSpan::new(SourceOffset::from(0), 0),
+                            found_span: SourceSpan::new(SourceOffset::from(0), 0),
+                            expected: params.len(),
+                            found: fn_sig.params.len(),
+                        }));
+                }
+
+                for (param, arg) in fn_sig.params.into_iter().zip(params) {
+                    let param = self.instantiate(&param, &generic_args);
+                    self.unify(arg, param);
+                }
+
+                let return_ty = self.instantiate(&return_ty, &generic_args);
+                self.unify(fn_sig.return_ty, return_ty);
             }
             (found, expected) => {
                 self.session

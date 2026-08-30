@@ -1,10 +1,10 @@
 fn main() {
-    let a = foo;
-    let b: i32 = a();
+    let a: fn(i32) -> i32 = foo;
+    let b: i32 = a(3);
 }
 
-fn foo() -> i32 {
-    3
+fn foo(a: i32) -> i32 {
+    a
 }
 /*
 enum Option<T> {
