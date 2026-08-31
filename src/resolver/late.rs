@@ -313,6 +313,20 @@ impl<'a, 'r> LateResolver<'a, 'r> {
                     }
                 }
                 None => {
+                    // If we are inside an enum module and the lookup failed,
+                    // fall back to a partial resolution on the enum itself (e.g. Enum::method).
+                    if let ModuleKind::Def(def_id) = self.r.module_arena.get(current_module).kind {
+                        let def = self.r.defs.definitions.get(&def_id).unwrap();
+                        if def.kind == DefKind::Enum {
+                            let unresolved = segments.len() - i;
+                            self.r.defs.partial_res.insert(
+                                path.ast_id,
+                                PartialRes::new(Res::Def(def_id, DefKind::Enum), unresolved),
+                            );
+                            self.r.defs.insert_ast_id(path.ast_id, def_id);
+                            return;
+                        }
+                    }
                     self.r.defs.insert_resolution(path.ast_id, Res::Err);
                     self.report_unresolved_path(path);
                     return;

@@ -831,7 +831,7 @@ impl<'hir> TypeChecker<'hir> {
                     resolved_segments,
                     unresolved_segments,
                 } => match res {
-                    Res::Def(def_id, DefKind::Struct) => {
+                    Res::Def(def_id, DefKind::Struct) | Res::Def(def_id, DefKind::Enum) => {
                         assert_eq!(
                             unresolved_segments.len(),
                             1,

@@ -4,13 +4,11 @@ enum Test {
 }
 
 impl Test {
-    /*
     fn foo() {}
 
     fn test() {
         Test::foo();
     }
-    */
 }
 
 /*
