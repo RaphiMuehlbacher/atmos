@@ -1,6 +1,16 @@
-fn test() {
-    let a = 2;
-    let b: a = 3;
+enum Test {
+    A,
+    B,
+}
+
+impl Test {
+    /*
+    fn foo() {}
+
+    fn test() {
+        Test::foo();
+    }
+    */
 }
 
 /*

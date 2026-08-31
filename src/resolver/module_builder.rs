@@ -68,11 +68,16 @@ impl ModuleArena {
 pub struct ModuleBuilder<'a, 'r> {
     r: &'a mut Resolver<'r>,
     parent: ModuleId,
+    in_impl: bool,
 }
 
 impl<'a, 'r> ModuleBuilder<'a, 'r> {
-    pub fn new(resolver: &'a mut Resolver<'r>, parent: ModuleId) -> Self {
-        Self { r: resolver, parent }
+    pub fn new(r: &'a mut Resolver<'r>, parent: ModuleId) -> Self {
+        Self {
+            r,
+            parent,
+            in_impl: false,
+        }
     }
 }
 
@@ -141,10 +146,11 @@ impl visitor::Visitor for ModuleBuilder<'_, '_> {
                     .module_arena
                     .define(parent, ty_alias_decl.ident.node.clone(), Binding::Item(*def_id));
             }
-            Item::Impl(_) => {}
+            Item::Impl(_) => self.in_impl = true,
         }
         visitor::walk_item(self, item);
         self.parent = parent;
+        self.in_impl = false;
     }
 
     fn visit_block(&mut self, block: &AstNode<BlockExpr>) {
@@ -163,6 +169,11 @@ impl visitor::Visitor for ModuleBuilder<'_, '_> {
     }
 
     fn visit_assoc_item(&mut self, assoc_item: &AstNode<AssociatedItem>) {
+        if self.in_impl {
+            visitor::walk_assoc_item(self, assoc_item);
+            return;
+        }
+
         let ident = match &assoc_item.node {
             AssociatedItem::Fn(sig, _) => sig.node.ident.node.clone(),
             AssociatedItem::Type(ty_alias) => ty_alias.node.ident.node.clone(),
