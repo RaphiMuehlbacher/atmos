@@ -1,14 +1,9 @@
-enum Test {
-    A,
-    B,
-}
-
-impl Test {
-    fn foo() {}
-
-    fn test() {
-        Test::foo();
-    }
+struct Wrapper<T>(T);
+fn main() {
+    let a = (1, 2);
+    let b: i32 = a.0;
+    let w = Wrapper(3);
+    let r: u32 = w.0;
 }
 
 /*

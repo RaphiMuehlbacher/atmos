@@ -1209,9 +1209,56 @@ impl<'a> Parser<'a> {
 
                 TokenKind::Punctuation(Punct::Dot) => {
                     self.advance();
-                    let ident = self.parse_ident()?;
+                    // chained tuple indexes
+                    if let TokenKind::Literal(Literal::Float { value, suffix: None }) = &self.current().kind {
+                        let span = self.current().span;
+                        let value = value.clone();
+                        self.advance();
 
-                    if self.check(&[TokenKind::OpeningDelimiter(Delimiter::Paren)]) {
+                        let mut offset = span.offset();
+
+                        for part in value.split('.') {
+                            if part.is_empty() {
+                                offset += 1;
+                                continue;
+                            }
+                            let part_span: SourceSpan = (offset, part.len()).into();
+                            if part.parse::<usize>().is_err() {
+                                self.emit(
+                                    self.literal_overflow(format!("tuple index `{}` is too large", part), part_span),
+                                );
+                            }
+
+                            let ident = AstNode::new(Ident { name: part.to_string() }, part_span);
+                            lhs = AstNode::new(
+                                Expr::FieldAccess(FieldAccessExpr {
+                                    target: Box::new(lhs.clone()),
+                                    field: ident,
+                                }),
+                                lhs.span.to(part_span),
+                            );
+                            offset += part.len() + 1; // skip dot
+                        }
+                        continue;
+                    }
+
+                    let ident = match self.current().kind.clone() {
+                        TokenKind::Literal(Literal::Integer { value, suffix: None }) => {
+                            let span = self.current().span;
+                            let name = value.clone();
+                            self.advance();
+
+                            if name.parse::<usize>().is_err() {
+                                self.emit(self.literal_overflow(format!("tuple index `{}` is too large", name), span));
+                            }
+                            AstNode::new(Ident { name }, span)
+                        }
+                        _ => self.parse_ident()?,
+                    };
+
+                    let is_tuple_index = ident.node.name.chars().all(|c| c.is_ascii_digit());
+
+                    if !is_tuple_index && self.check(&[TokenKind::OpeningDelimiter(Delimiter::Paren)]) {
                         let args = self.parse_separated_delimited(
                             TokenKind::OpeningDelimiter(Delimiter::Paren),
                             TokenKind::ClosingDelimiter(Delimiter::Paren),

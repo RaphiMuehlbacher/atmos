@@ -695,7 +695,7 @@ impl<'hir> TypeChecker<'hir> {
                 let ident = &method_call.method.node.ident.node;
 
                 match &receiver {
-                    Ty::Struct(def_id, args) => {
+                    Ty::Struct(def_id, args) | Ty::Enum(def_id, args) => {
                         let args = self.lower_generic_args(
                             *def_id,
                             slice::from_ref(&method_call.method),
@@ -734,7 +734,6 @@ impl<'hir> TypeChecker<'hir> {
 
                         self.instantiate(&fn_sig.return_ty, &args)
                     }
-                    Ty::Enum(def_id, args) => todo!(),
                     _ => panic!("emit error that you can only call methods on structs and enums"),
                 }
             }
@@ -757,34 +756,48 @@ impl<'hir> TypeChecker<'hir> {
             hir::Expr::Field(field_expr) => {
                 let base = self.check_expression(&field_expr.base);
                 let base = self.deeply_resolve(base);
-                let base_str = self.pretty_print_ty(&base);
 
-                let Ty::Struct(def_id, args) = base else {
-                    self.session.push_error(CompilerError::TypeCheckerError(
-                        TypeCheckerError::ExpectedStructInFieldAccess {
-                            src: self.session.get_named_source(),
-                            span: field_expr.field.span,
-                            found: base_str,
-                        },
-                    ));
-                    return Ty::Err;
-                };
-                let fields = &self.collected_types.structs.get(&def_id).unwrap().fields;
-
-                let Some(field) = fields.iter().find(|field| field.ident == field_expr.field.node) else {
-                    self.session
-                        .push_error(CompilerError::TypeCheckerError(TypeCheckerError::FieldNotFound {
-                            src: self.session.get_named_source(),
-                            span: field_expr.field.span,
-                            field: field_expr.field.node.name.clone(),
-                            ty: base_str,
-                        }));
-                    return Ty::Err;
-                };
-                let field_def_id = field.def_id;
-
-                let field_ty = self.collected_types.type_of.get(&field_def_id).unwrap().clone();
-                self.instantiate(&field_ty, &args)
+                let field_name = &field_expr.field.node.name;
+                match &base {
+                    Ty::Tuple(types) if field_name.chars().all(|c| c.is_ascii_digit()) => {
+                        let idx = field_name.parse::<usize>().expect("already reported in parser");
+                        match types.get(idx) {
+                            Some(ty) => ty.clone(),
+                            None => {
+                                self.session.push_error(CompilerError::TypeCheckerError(
+                                    TypeCheckerError::TupleIndexOutOfBounds {
+                                        src: self.session.get_named_source(),
+                                        span: field_expr.field.span,
+                                        index: idx,
+                                        len: types.len(),
+                                    },
+                                ));
+                                Ty::Err
+                            }
+                        }
+                    }
+                    Ty::Struct(def_id, args) => {
+                        let fields = &self.collected_types.structs.get(&def_id).unwrap().fields;
+                        match fields.iter().find(|field| field.ident == field_expr.field.node) {
+                            Some(field) => {
+                                let field_ty = self.collected_types.type_of.get(&field.def_id).unwrap().clone();
+                                self.instantiate(&field_ty, &args)
+                            }
+                            None => {
+                                self.session.push_error(CompilerError::TypeCheckerError(
+                                    TypeCheckerError::FieldNotFound {
+                                        src: self.session.get_named_source(),
+                                        span: field_expr.field.span,
+                                        field: field_name.clone(),
+                                        ty: self.pretty_print_ty(&base),
+                                    },
+                                ));
+                                Ty::Err
+                            }
+                        }
+                    }
+                    _ => todo!("emit error: type doesn't support field access"),
+                }
             }
             hir::Expr::Index(index_expr) => todo!(),
             hir::Expr::Path(path) => match &path.node {

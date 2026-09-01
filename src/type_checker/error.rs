@@ -133,19 +133,20 @@ pub enum TypeCheckerError {
         ty: String,
     },
 
-    #[error("expected a struct type in field access, found `{found}`")]
+    #[error("tuple index {index} out of bounds for tuple of length {len}")]
     #[diagnostic(
-        code(typechecker::expected_struct_in_field_access),
-        help("field access is only supported on struct types")
+        code(typechecker::tuple_index_out_of_bounds),
+        help("the tuple has {len} element(s) but index {index} was requested")
     )]
-    ExpectedStructInFieldAccess {
+    TupleIndexOutOfBounds {
         #[source_code]
         src: NamedSource<String>,
 
-        #[label("this expression has type `{found}`")]
+        #[label("index {index} out of bounds")]
         span: SourceSpan,
 
-        found: String,
+        index: usize,
+        len: usize,
     },
     #[error("duplicate field `{field}` in struct expression")]
     #[diagnostic(
