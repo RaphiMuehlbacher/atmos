@@ -1,9 +1,11 @@
-struct Wrapper<T>(T);
+struct Wrapper<T> {
+    inner: T
+}
+
 fn main() {
-    let a = (1, 2);
-    let b: i32 = a.0;
-    let w = Wrapper(3);
-    let r: u32 = w.0;
+    let w = Wrapper { inner: 3 };
+    let Wrapper { inner: num } = w;
+    let a: i32 = num;
 }
 
 /*

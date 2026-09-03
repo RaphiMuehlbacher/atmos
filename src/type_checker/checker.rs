@@ -159,7 +159,60 @@ impl<'hir> TypeChecker<'hir> {
             }
             Pattern::Binding(binding) => expected,
             Pattern::Path(path) => todo!(),
-            Pattern::Struct(path, pattern_struct_field) => todo!(),
+            Pattern::Struct(path, fields) => {
+                let Path::Resolved {
+                    res: Res::Def(def_id, DefKind::Struct),
+                    segments,
+                } = &path.node
+                else {
+                    todo!("support enum variants")
+                };
+
+                let args = self.lower_generic_args(*def_id, segments, GenericArgPosition::Value);
+                let ty = Ty::Struct(*def_id, args.clone());
+                self.unify(ty, expected.clone());
+
+                let struct_def = self.collected_types.structs.get(def_id).unwrap().clone();
+                let struct_fields: HashMap<Ident, Ty> = struct_def
+                    .fields
+                    .into_iter()
+                    .map(|field| {
+                        (
+                            field.ident,
+                            self.collected_types.type_of.get(&field.def_id).unwrap().clone(),
+                        )
+                    })
+                    .collect();
+
+                let mut seen = HashSet::<&Ident>::new();
+                for field in fields {
+                    let ident = &field.node.ident.node;
+
+                    let Some(field_ty) = struct_fields.get(ident) else {
+                        self.session
+                            .push_error(CompilerError::TypeCheckerError(TypeCheckerError::FieldNotFound {
+                                src: self.session.get_named_source(),
+                                span: field.node.ident.span,
+                                field: ident.name.clone(),
+                                ty: self.pretty_print_ty(&Ty::Struct(*def_id, args.clone())),
+                            }));
+                        continue;
+                    };
+
+                    let field_ty = self.instantiate(&field_ty, &args);
+                    self.check_pattern(&field.node.pattern, field_ty);
+
+                    if seen.contains(ident) {
+                        todo!("emit error for field specified more than once");
+                    }
+                    seen.insert(ident);
+                }
+
+                for _ in struct_fields.keys().filter(|ident| !seen.contains(ident)) {
+                    todo!("emit error for missing field")
+                }
+                expected
+            }
             Pattern::TupleStruct(path, patterns) => todo!(),
             Pattern::Tuple(patterns) => {
                 let elements_ty: Vec<Ty> = (0..patterns.len()).map(|_| self.infer_ctxt.next_ty_var()).collect();
