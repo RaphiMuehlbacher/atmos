@@ -1,11 +1,13 @@
-struct Wrapper<T> {
-    inner: T
+enum Test<T> {
+    A {
+        num: T,
+    }
 }
 
 fn main() {
-    let w = Wrapper { inner: 3 };
-    let Wrapper { inner: num } = w;
-    let a: i32 = num;
+    let t = Test::A { num: 3 };
+    let Test::A { num: n } = t;
+    let a: i32 = n;
 }
 
 /*
