@@ -1,13 +1,18 @@
-enum Test<T> {
-    A {
-        num: T,
-    }
+enum Test {
+    A,
+    B,
 }
 
+struct Unit;
+
 fn main() {
-    let t = Test::A { num: 3 };
-    let Test::A { num: n } = t;
-    let a: i32 = n;
+    /*
+    let a = Test::A;
+    let Test::A = a;
+    */
+
+    let u = Unit;
+    let Unit = u;
 }
 
 /*

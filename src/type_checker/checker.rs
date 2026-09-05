@@ -157,8 +157,30 @@ impl<'hir> TypeChecker<'hir> {
                 }
                 expected
             }
-            Pattern::Binding(binding) => expected,
-            Pattern::Path(path) => todo!(),
+            Pattern::Binding(_) => expected,
+            Pattern::Path(path) => match &path.node {
+                Path::Resolved {
+                    res: Res::Def(def_id, DefKind::Struct),
+                    segments: _,
+                } => {
+                    // Unit structs can't have generics
+                    let args = vec![];
+                    let ty = Ty::Struct(*def_id, args);
+                    self.unify(ty, expected.clone());
+                    expected
+                }
+                Path::Resolved {
+                    res: Res::Def(variant_def_id, DefKind::EnumVariant),
+                    segments,
+                } => {
+                    let enum_def_id = self.parent_map.get(variant_def_id).unwrap();
+                    let args = self.lower_generic_args(*enum_def_id, segments, GenericArgPosition::Value);
+                    let ty = Ty::Enum(*enum_def_id, args.clone());
+                    self.unify(ty, expected.clone());
+                    expected
+                }
+                _ => panic!("emit error"),
+            },
             Pattern::Struct(path, fields) => match &path.node {
                 Path::Resolved {
                     res: Res::Def(def_id, DefKind::Struct),

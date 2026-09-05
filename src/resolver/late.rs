@@ -12,12 +12,6 @@ use crate::resolver::{ResolverError, visitor};
 use crate::{Resolver, visit_opt};
 use std::collections::HashSet;
 
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub enum PatternSource {
-    Match,  // constructor or binding
-    Normal, // binding
-}
-
 pub struct LateResolver<'a, 'r> {
     r: &'a mut Resolver<'r>,
     ribs: Vec<Rib>,
@@ -56,24 +50,19 @@ impl<'a, 'r> LateResolver<'a, 'r> {
         self.pop_rib();
     }
 
-    fn resolve_pattern(&mut self, pattern: &AstNode<Pattern>, source: PatternSource) {
+    fn resolve_pattern(&mut self, pattern: &AstNode<Pattern>) {
         let mut pattern_bindings: HashSet<Ident> = HashSet::new();
-        self.resolve_pattern_inner(pattern, source, &mut pattern_bindings);
+        self.resolve_pattern_inner(pattern, &mut pattern_bindings);
     }
 
-    fn resolve_pattern_inner(
-        &mut self,
-        pattern: &AstNode<Pattern>,
-        source: PatternSource,
-        pattern_bindings: &mut HashSet<Ident>,
-    ) {
+    fn resolve_pattern_inner(&mut self, pattern: &AstNode<Pattern>, pattern_bindings: &mut HashSet<Ident>) {
         match &pattern.node {
             Pattern::Or(patterns) => {
                 let mut first_bindings: Option<HashSet<Ident>> = None;
 
                 for pattern in patterns {
                     let mut alt_bindings = HashSet::new();
-                    self.resolve_pattern_inner(pattern, source, &mut alt_bindings);
+                    self.resolve_pattern_inner(pattern, &mut alt_bindings);
                     match &first_bindings {
                         None => first_bindings = Some(alt_bindings.clone()),
                         Some(expected) => {
@@ -102,13 +91,12 @@ impl<'a, 'r> LateResolver<'a, 'r> {
                     return;
                 }
 
-                if matches!(source, PatternSource::Match)
-                    && let Some(res) = self.lookup_value(&ident.node)
-                {
+                if let Some(res) = self.lookup_value(&ident.node) {
                     match res {
                         Res::Local(_) | Res::PrimTy(_) | Res::SelfTy(_) | Res::Err => {}
-                        Res::Def(def_id, _) => {
+                        Res::Def(def_id, def_kind) => {
                             self.r.defs.insert_ast_id(ident.ast_id, def_id);
+                            self.r.defs.insert_resolution(ident.ast_id, Res::Def(def_id, def_kind));
                             return;
                         }
                     }
@@ -128,23 +116,23 @@ impl<'a, 'r> LateResolver<'a, 'r> {
                 self.r.defs.insert_resolution(ident.ast_id, Res::Local(pattern.ast_id));
             }
             Pattern::Path(path) => self.resolve_path(path),
-            Pattern::Paren(pattern) => self.resolve_pattern_inner(pattern, source, pattern_bindings),
+            Pattern::Paren(pattern) => self.resolve_pattern_inner(pattern, pattern_bindings),
             Pattern::Tuple(patterns) => {
                 for pattern in patterns {
-                    self.resolve_pattern_inner(pattern, source, pattern_bindings);
+                    self.resolve_pattern_inner(pattern, pattern_bindings);
                 }
             }
             Pattern::TupleStruct(path, patterns) => {
                 self.resolve_path(path);
                 for pattern in patterns {
-                    self.resolve_pattern_inner(pattern, source, pattern_bindings);
+                    self.resolve_pattern_inner(pattern, pattern_bindings);
                 }
             }
             Pattern::Struct(path, struct_fields) => {
                 self.resolve_path(path);
                 for field in struct_fields {
                     self.visit_ident(&field.node.ident);
-                    self.resolve_pattern_inner(&field.node.pattern, source, pattern_bindings);
+                    self.resolve_pattern_inner(&field.node.pattern, pattern_bindings);
                 }
             }
             _ => visitor::walk_pattern(self, pattern),
@@ -489,7 +477,7 @@ impl Visitor for LateResolver<'_, '_> {
     }
 
     fn visit_let_stmt(&mut self, let_stmt: &AstNode<LetStmt>) {
-        self.resolve_pattern(&let_stmt.node.pat, PatternSource::Normal);
+        self.resolve_pattern(&let_stmt.node.pat);
         visit_opt!(self, visit_type, &let_stmt.node.type_annotation);
         visit_opt!(self, visit_expr, &let_stmt.node.expr);
     }
@@ -502,7 +490,7 @@ impl Visitor for LateResolver<'_, '_> {
     }
 
     fn visit_pattern(&mut self, pattern: &AstNode<Pattern>) {
-        self.resolve_pattern(pattern, PatternSource::Normal);
+        self.resolve_pattern(pattern);
     }
 
     fn visit_path(&mut self, path: &AstNode<Path>) {
@@ -559,7 +547,7 @@ impl Visitor for LateResolver<'_, '_> {
             Expr::For(for_expr) => {
                 self.visit_expr(&for_expr.iterator);
                 self.with_rib(RibKind::Local, |this| {
-                    this.resolve_pattern(&for_expr.pattern, PatternSource::Normal);
+                    this.resolve_pattern(&for_expr.pattern);
                     this.visit_block(&for_expr.body);
                 });
             }
@@ -567,14 +555,14 @@ impl Visitor for LateResolver<'_, '_> {
                 self.visit_expr(&match_expr.value);
                 for arm in &match_expr.arms {
                     self.with_rib(RibKind::Local, |this| {
-                        this.resolve_pattern(&arm.node.pattern, PatternSource::Match);
+                        this.resolve_pattern(&arm.node.pattern);
                         this.visit_expr(&arm.node.body);
                     });
                 }
             }
             Expr::Let(let_expr) => {
                 self.visit_expr(&let_expr.value);
-                self.resolve_pattern(&let_expr.pattern, PatternSource::Match);
+                self.resolve_pattern(&let_expr.pattern);
             }
             _ => visitor::walk_expr(self, expr),
         }

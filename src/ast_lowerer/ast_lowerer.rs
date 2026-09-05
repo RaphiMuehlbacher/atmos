@@ -632,9 +632,25 @@ impl<'ast> AstLowerer<'ast> {
             }
             ast::Pattern::Ident(ident) => {
                 let res = self.defs.get_resolution(ident.ast_id).unwrap();
-                let Res::Local(ast_id) = res else { panic!() };
-                self.ast_to_hir.insert(*ast_id, hir_id);
-                hir::Pattern::Binding(ident.clone().into())
+                match res {
+                    Res::Local(ast_id) => {
+                        self.ast_to_hir.insert(*ast_id, hir_id);
+                        hir::Pattern::Binding(ident.clone().into())
+                    }
+                    res @ Res::Def(_, _) => {
+                        let res = self.lower_res(res);
+                        let segment = hir::PathSegment {
+                            ident: ident.clone().into(),
+                            args: vec![],
+                        };
+                        let path = hir::Path::Resolved {
+                            res,
+                            segments: vec![HirNode::new(segment, ident.span)],
+                        };
+                        hir::Pattern::Path(HirNode::new(path, ident.span))
+                    }
+                    _ => panic!(),
+                }
             }
             ast::Pattern::Path(path) => hir::Pattern::Path(self.lower_path(path)),
             ast::Pattern::Struct(path, struct_fields) => {
