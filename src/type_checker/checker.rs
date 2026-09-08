@@ -292,7 +292,86 @@ impl<'hir> TypeChecker<'hir> {
                 }
                 _ => panic!("emit error"),
             },
-            Pattern::TupleStruct(path, patterns) => todo!(),
+            Pattern::TupleStruct(path, patterns) => match &path.node {
+                Path::Resolved {
+                    res: Res::Def(variant_def_id, DefKind::EnumVariant),
+                    segments,
+                } => {
+                    let enum_def_id = self.parent_map.get(variant_def_id).unwrap();
+                    let args = self.lower_generic_args(*enum_def_id, segments, GenericArgPosition::Value);
+                    let ty = Ty::Enum(*enum_def_id, args.clone());
+                    self.unify(ty, expected.clone());
+
+                    let enum_def = self.collected_types.enums.get(enum_def_id).unwrap().clone();
+                    let variant = enum_def
+                        .variants
+                        .iter()
+                        .find(|variant| variant.def_id == *variant_def_id)
+                        .unwrap();
+
+                    let variant_fields: Vec<_> = variant
+                        .fields
+                        .iter()
+                        .map(|field| self.collected_types.type_of.get(&field.def_id).unwrap().clone())
+                        .collect();
+
+                    if patterns.len() != variant_fields.len() {
+                        self.session.push_error(CompilerError::TypeCheckerError(
+                            TypeCheckerError::StructArgArityMismatch {
+                                src: self.session.get_named_source(),
+                                expected_span: pattern.span,
+                                found_span: pattern.span,
+                                expected: variant_fields.len(),
+                                found: patterns.len(),
+                            },
+                        ));
+                    }
+
+                    for (pattern, field_ty) in patterns.iter().zip(variant_fields) {
+                        let field_ty = self.instantiate(&field_ty, &args);
+                        self.check_pattern(pattern, field_ty);
+                    }
+
+                    expected
+                }
+
+                Path::Resolved {
+                    res: Res::Def(def_id, DefKind::Struct),
+                    segments,
+                } => {
+                    let args = self.lower_generic_args(*def_id, segments, GenericArgPosition::Value);
+                    let ty = Ty::Struct(*def_id, args.clone());
+                    self.unify(ty, expected.clone());
+
+                    let struct_def = self.collected_types.structs.get(def_id).unwrap().clone();
+
+                    let fields: Vec<_> = struct_def
+                        .fields
+                        .iter()
+                        .map(|field| self.collected_types.type_of.get(&field.def_id).unwrap().clone())
+                        .collect();
+
+                    if patterns.len() != fields.len() {
+                        self.session.push_error(CompilerError::TypeCheckerError(
+                            TypeCheckerError::StructArgArityMismatch {
+                                src: self.session.get_named_source(),
+                                expected_span: pattern.span,
+                                found_span: pattern.span,
+                                expected: fields.len(),
+                                found: patterns.len(),
+                            },
+                        ));
+                    }
+
+                    for (pattern, field_ty) in patterns.iter().zip(fields) {
+                        let field_ty = self.instantiate(&field_ty, &args);
+                        self.check_pattern(pattern, field_ty);
+                    }
+
+                    expected
+                }
+                _ => panic!("emit error"),
+            },
             Pattern::Tuple(patterns) => {
                 let elements_ty: Vec<Ty> = (0..patterns.len()).map(|_| self.infer_ctxt.next_ty_var()).collect();
                 let tuple_ty = Ty::Tuple(elements_ty.clone());

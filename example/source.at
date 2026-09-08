@@ -1,18 +1,22 @@
-enum Test {
-    A,
+struct Thing(i32, u32);
+
+enum Foo {
+    A(bool, (i32, u32)),
     B,
 }
 
-struct Unit;
-
 fn main() {
-    /*
-    let a = Test::A;
-    let Test::A = a;
-    */
+    let t = Thing(1, 2);
+    let Thing(a, b) = t;
 
-    let u = Unit;
-    let Unit = u;
+    let c: u32 = b;
+
+    let foo = Foo::A(true, (3, 4));
+    let Foo::A(b, (i, u)) = foo;
+    let Foo::A(b2, tuple) = foo;
+
+    let d: (i32, u32) = tuple;
+    let int: i32 = i;
 }
 
 /*
