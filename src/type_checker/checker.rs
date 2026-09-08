@@ -1147,7 +1147,18 @@ impl<'hir> TypeChecker<'hir> {
                 then_branch
             }
             hir::Expr::Block(block) => self.check_block(block),
-            hir::Expr::Match(match_expr) => todo!(),
+            hir::Expr::Match(match_expr) => {
+                let scrutinee = self.check_expression(&match_expr.scrutinee);
+
+                let block_ty = self.infer_ctxt.next_ty_var();
+
+                for arm in &match_expr.arms {
+                    self.check_pattern(&arm.node.pattern, scrutinee.clone());
+                    let body_ty = self.check_expression(&arm.node.body);
+                    self.unify(body_ty, block_ty.clone());
+                }
+                block_ty
+            }
             hir::Expr::Let(let_expr) => todo!(),
             hir::Expr::Err => todo!(),
         }
@@ -1163,6 +1174,8 @@ impl<'hir> TypeChecker<'hir> {
             | (Ty::F64, Ty::F64)
             | (Ty::Str, Ty::Str)
             | (Ty::Bool, Ty::Bool)
+            // TODO: think more about never type coercions
+            | (Ty::Never, Ty::Never)
             | (Ty::Unit, Ty::Unit) => {}
             (Ty::Infer(InferTy::IntVar(found)), Ty::Infer(InferTy::IntVar(expected))) => {
                 self.infer_ctxt

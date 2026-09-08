@@ -1,22 +1,13 @@
-struct Thing(i32, u32);
-
-enum Foo {
-    A(bool, (i32, u32)),
-    B,
-}
-
 fn main() {
-    let t = Thing(1, 2);
-    let Thing(a, b) = t;
+    let tup = (1, 2);
 
-    let c: u32 = b;
-
-    let foo = Foo::A(true, (3, 4));
-    let Foo::A(b, (i, u)) = foo;
-    let Foo::A(b2, tuple) = foo;
-
-    let d: (i32, u32) = tuple;
-    let int: i32 = i;
+    match tup {
+        (a, b) => {
+            let c: i32 = a;
+            false
+        },
+        c => true,
+    };
 }
 
 /*
