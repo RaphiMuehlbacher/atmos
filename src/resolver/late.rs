@@ -1,7 +1,7 @@
 use crate::error::CompilerError;
 use crate::parser::AstId;
 use crate::parser::ast::{
-    AstNode, BlockExpr, Expr, GenericArg, GenericParam, Ident, Item, LetStmt, Path, PathSegment, Pattern, Ty,
+    AstNode, BlockExpr, Expr, GenericParam, Ident, Item, LetStmt, Path, PathSegment, Pattern, Ty,
 };
 use crate::resolver::DefId;
 use crate::resolver::defs::{DefKind, PartialRes};
@@ -81,24 +81,18 @@ impl<'a, 'r> LateResolver<'a, 'r> {
                 }
             }
             Pattern::Ident(ident) => {
-                if ident.node.name == "Self" {
-                    self.r
-                        .session
-                        .push_error(CompilerError::ResolverError(ResolverError::SelfAsBinding {
-                            src: self.r.session.get_named_source(),
-                            span: ident.span,
-                        }));
-                    return;
-                }
-
                 if let Some(res) = self.lookup_value(&ident.node) {
                     match res {
-                        Res::Local(_) | Res::PrimTy(_) | Res::SelfTy(_) | Res::Err => {}
-                        Res::Def(def_id, def_kind) => {
+                        res @ Res::Def(def_id, _)
+                        | res @ Res::SelfTy(SelfTyInfo {
+                            self_ty_def: Some(def_id),
+                            ..
+                        }) => {
                             self.r.defs.insert_ast_id(ident.ast_id, def_id);
-                            self.r.defs.insert_resolution(ident.ast_id, Res::Def(def_id, def_kind));
+                            self.r.defs.insert_resolution(ident.ast_id, res);
                             return;
                         }
+                        Res::Local(_) | Res::PrimTy(_) | Res::SelfTy(_) | Res::Err => {}
                     }
                 }
 
@@ -448,38 +442,37 @@ impl Visitor for LateResolver<'_, '_> {
 
         match &item.node {
             Item::Impl(impl_decl) => {
-                let impl_def_id = self.r.defs.get_def_from_ast(item.ast_id).copied();
-                if let Some(impl_def) = impl_def_id {
-                    let self_ty_def = self.get_def_from_ty(&impl_decl.self_ty);
-                    let trait_def = impl_decl
-                        .for_trait
-                        .as_ref()
-                        .and_then(|path| self.r.defs.get_def_from_ast(path.ast_id).copied());
+                let impl_def_id = *self.r.defs.get_def_from_ast(item.ast_id).unwrap();
+                let self_ty_def = self.get_def_from_ty(&impl_decl.self_ty);
+                let trait_def = impl_decl
+                    .for_trait
+                    .as_ref()
+                    .and_then(|path| self.r.defs.get_def_from_ast(path.ast_id).copied());
 
-                    self.self_ty_info = Some(SelfTyInfo {
-                        self_ty_def,
-                        trait_def,
-                        impl_or_trait_def: impl_def,
-                    });
-                }
+                let self_ty_info = SelfTyInfo {
+                    self_ty_def,
+                    trait_def,
+                    impl_or_trait_def: impl_def_id,
+                };
+                self.self_ty_info = Some(self_ty_info);
+                self.innermost_rib()
+                    .insert(Ident::from(String::from("Self")), Res::SelfTy(self_ty_info));
             }
             Item::Trait(_) => {
-                if let Some(trait_def) = self.r.defs.get_def_from_ast(item.ast_id).copied() {
-                    self.self_ty_info = Some(SelfTyInfo {
-                        self_ty_def: None,
-                        trait_def: Some(trait_def),
-                        impl_or_trait_def: trait_def,
-                    });
-                }
+                let trait_def_id = *self.r.defs.get_def_from_ast(item.ast_id).unwrap();
+                self.self_ty_info = Some(SelfTyInfo {
+                    self_ty_def: None,
+                    trait_def: Some(trait_def_id),
+                    impl_or_trait_def: trait_def_id,
+                });
             }
             Item::Struct(_) | Item::Enum(_) | Item::TyAlias(_) => {
-                if let Some(def_id) = self.r.defs.get_def_from_ast(item.ast_id).copied() {
-                    self.self_ty_info = Some(SelfTyInfo {
-                        self_ty_def: Some(def_id),
-                        trait_def: None,
-                        impl_or_trait_def: def_id,
-                    });
-                }
+                let def_id = *self.r.defs.get_def_from_ast(item.ast_id).unwrap();
+                self.self_ty_info = Some(SelfTyInfo {
+                    self_ty_def: Some(def_id),
+                    trait_def: None,
+                    impl_or_trait_def: def_id,
+                });
             }
             _ => {}
         }

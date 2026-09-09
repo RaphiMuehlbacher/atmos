@@ -2,7 +2,7 @@ use crate::ast_lowerer::hir::{self, HirId, HirNode};
 use crate::parser::ast::AstNode;
 use crate::parser::{AstId, ast};
 use crate::resolver::defs::{DefId, DefinitionMap};
-use crate::resolver::ribs::Res;
+use crate::resolver::ribs::{Res, SelfTyInfo};
 use std::collections::HashMap;
 
 pub struct AstLowerer<'ast> {
@@ -637,7 +637,10 @@ impl<'ast> AstLowerer<'ast> {
                         self.ast_to_hir.insert(*ast_id, hir_id);
                         hir::Pattern::Binding(ident.clone().into())
                     }
-                    res @ Res::Def(_, _) => {
+                    res @ Res::Def(_, _)
+                    | res @ Res::SelfTy(SelfTyInfo {
+                        self_ty_def: Some(_), ..
+                    }) => {
                         let res = self.lower_res(res);
                         let segment = hir::PathSegment {
                             ident: ident.clone().into(),

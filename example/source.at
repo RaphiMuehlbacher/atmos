@@ -3,10 +3,20 @@ enum Test {
 }
 
 impl Test {
-    fn test(self: Self) {
+    fn test(self: Self) -> i32 {
         match self {
-            Self::A => {},
+            Self::A => 3,
         }
+    }
+}
+
+struct Foo {
+    foo: i32,
+}
+
+impl Foo {
+    fn foo(self: Self) {
+        let Self = self;
     }
 }
 
