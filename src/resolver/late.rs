@@ -187,13 +187,6 @@ impl<'a, 'r> LateResolver<'a, 'r> {
         }
     }
 
-    fn resolve_generic_arg(&mut self, generic_arg: &AstNode<GenericArg>) {
-        match &generic_arg.node {
-            GenericArg::Type(ty) => visitor::walk_type(self, ty),
-            GenericArg::Const(expr) => self.visit_expr(expr),
-        }
-    }
-
     fn resolve_path(&mut self, path: &AstNode<Path>) {
         let segments = &path.node.segments;
 
@@ -205,11 +198,36 @@ impl<'a, 'r> LateResolver<'a, 'r> {
         // e.g. S::Assoc<u32>
         for segment in segments {
             for arg in &segment.node.args {
-                self.resolve_generic_arg(arg);
+                visitor::walk_generic_arg(self, arg);
             }
         }
 
         let first_ident = &segments[0].node.ident.node;
+
+        if first_ident.name == "Self" {
+            match self.self_ty_info {
+                Some(self_ty_info) => {
+                    if segments.len() == 1 {
+                        self.r.defs.insert_resolution(path.ast_id, Res::SelfTy(self_ty_info));
+                    } else {
+                        self.r.defs.partial_res.insert(
+                            path.ast_id,
+                            PartialRes::new(Res::SelfTy(self.self_ty_info.unwrap()), path.node.segments.len() - 1),
+                        );
+                    }
+                }
+                None => {
+                    self.r.defs.insert_resolution(path.ast_id, Res::Err);
+                    self.r
+                        .session
+                        .push_error(CompilerError::ResolverError(ResolverError::SelfOutsideImpl {
+                            src: self.r.session.get_named_source(),
+                            span: segments[0].node.ident.span,
+                        }));
+                }
+            }
+            return;
+        }
 
         // Single-segment: try bindings first
         if segments.len() == 1
@@ -494,42 +512,6 @@ impl Visitor for LateResolver<'_, '_> {
     }
 
     fn visit_path(&mut self, path: &AstNode<Path>) {
-        if path.node.segments.is_empty() {
-            return;
-        }
-
-        let first_segment = &path.node.segments[0];
-        if first_segment.node.ident.node.name == "Self" {
-            match self.self_ty_info {
-                Some(self_ty_info) => {
-                    if path.node.segments.len() == 1 {
-                        self.r.defs.insert_resolution(path.ast_id, Res::SelfTy(self_ty_info));
-                    } else {
-                        self.r.defs.partial_res.insert(
-                            path.ast_id,
-                            PartialRes::new(Res::SelfTy(self.self_ty_info.unwrap()), path.node.segments.len() - 1),
-                        );
-                    }
-                }
-                None => {
-                    self.r.defs.insert_resolution(path.ast_id, Res::Err);
-                    self.r
-                        .session
-                        .push_error(CompilerError::ResolverError(ResolverError::SelfOutsideImpl {
-                            src: self.r.session.get_named_source(),
-                            span: first_segment.span,
-                        }));
-                }
-            }
-
-            for segment in &path.node.segments {
-                for arg in &segment.node.args {
-                    visitor::walk_generic_arg(self, arg);
-                }
-            }
-            return;
-        }
-
         self.resolve_path(path);
     }
 

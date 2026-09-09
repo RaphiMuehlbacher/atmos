@@ -1,14 +1,38 @@
-fn main() {
-    let tup = (1, 2);
-
-    match tup {
-        (a, b) => {
-            let c: i32 = a;
-            false
-        },
-        c => true,
-    };
+enum Test {
+    A,
 }
+
+impl Test {
+    fn test(self: Self) {
+        match self {
+            Self::A => {},
+        }
+    }
+}
+
+/*
+fn panic() {
+    return
+}
+
+enum Option<T> {
+    Some(T),
+    None,
+}
+
+impl<T> Option<T> {
+    fn unwrap(self: Self) -> T {
+        match self {
+            Self::Some(inner) => inner,
+            None => panic(),
+        }
+    }
+}
+
+fn main() {
+
+}
+*/
 
 /*
 enum Option<T> {
