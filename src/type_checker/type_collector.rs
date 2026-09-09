@@ -9,7 +9,7 @@ use crate::resolver::ribs::{PrimTy, Res, SelfTyInfo};
 use crate::type_checker::error::TypeCheckerError;
 use crate::type_checker::ty::{
     self, AssocItemDef, CollectedTypes, EnumDef, FnSig, GenericArg, GenericArgs, Generics, StructDef, StructField,
-    Variant,
+    StructKind, Variant,
 };
 use std::collections::HashMap;
 
@@ -151,9 +151,15 @@ impl<'hir> TypeCollector<'hir> {
                 Item::Struct(struct_decl) => {
                     let fields = self.collect_fields(&struct_decl.data);
 
+                    let kind = match &struct_decl.data.node {
+                        hir::VariantData::Unit => StructKind::Unit,
+                        hir::VariantData::Struct { .. } => StructKind::Struct,
+                        hir::VariantData::Tuple { .. } => StructKind::Tuple,
+                    };
+
                     self.collected_types
                         .structs
-                        .insert(def_id, StructDef { def_id, fields });
+                        .insert(def_id, StructDef { def_id, kind, fields });
                 }
                 Item::Enum(enum_decl) => {
                     let variants = enum_decl

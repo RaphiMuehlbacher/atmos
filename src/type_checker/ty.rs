@@ -88,9 +88,17 @@ pub struct FnSig {
     pub return_ty: Ty,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum StructKind {
+    Unit,
+    Tuple,
+    Struct,
+}
+
 #[derive(Debug, Clone)]
 pub struct StructDef {
     pub def_id: DefId,
+    pub kind: StructKind,
     pub fields: Vec<StructField>,
 }
 

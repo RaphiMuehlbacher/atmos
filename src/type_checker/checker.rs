@@ -8,7 +8,9 @@ use crate::resolver::DefId;
 use crate::resolver::defs::DefKind::{self, EnumVariant};
 use crate::resolver::ribs::{PrimTy, Res, SelfTyInfo};
 use crate::type_checker::error::TypeCheckerError;
-use crate::type_checker::ty::{self, CollectedTypes, GenericArg, GenericArgs, GenericParamDef, InferTy, Ty, TyVarId};
+use crate::type_checker::ty::{
+    self, CollectedTypes, GenericArg, GenericArgs, GenericParamDef, InferTy, StructKind, Ty, TyVarId,
+};
 use miette::{SourceOffset, SourceSpan};
 use std::collections::{HashMap, HashSet};
 use std::slice;
@@ -176,6 +178,37 @@ impl<'hir> TypeChecker<'hir> {
                     let enum_def_id = self.parent_map.get(variant_def_id).unwrap();
                     let args = self.lower_generic_args(*enum_def_id, segments, GenericArgPosition::Value);
                     let ty = Ty::Enum(*enum_def_id, args.clone());
+                    self.unify(ty, expected.clone());
+                    expected
+                }
+                Path::Unresolved {
+                    res:
+                        Res::SelfTy(SelfTyInfo {
+                            self_ty_def: Some(def_id),
+                            ..
+                        }),
+                    resolved_segments,
+                    unresolved_segments,
+                } => {
+                    self.prohibit_generic_args(resolved_segments);
+                    self.prohibit_generic_args(unresolved_segments);
+                    let ty = self.collected_types.type_of.get(def_id).unwrap().clone();
+                    self.unify(ty, expected.clone());
+                    expected
+                }
+                Path::Resolved {
+                    res:
+                        Res::SelfTy(SelfTyInfo {
+                            self_ty_def: Some(def_id),
+                            ..
+                        }),
+                    segments,
+                } => {
+                    if self.collected_types.structs.get(def_id).unwrap().kind != StructKind::Unit {
+                        panic!("emit error: expected unit struct")
+                    }
+                    self.prohibit_generic_args(segments);
+                    let ty = self.collected_types.type_of.get(def_id).unwrap().clone();
                     self.unify(ty, expected.clone());
                     expected
                 }
