@@ -1159,7 +1159,11 @@ impl<'hir> TypeChecker<'hir> {
                 }
                 block_ty
             }
-            hir::Expr::Let(let_expr) => todo!(),
+            hir::Expr::Let(let_expr) => {
+                let init_ty = self.check_expression(&let_expr.init);
+                self.check_pattern(&let_expr.pattern, init_ty);
+                Ty::Bool
+            }
             hir::Expr::Err => todo!(),
         }
     }
