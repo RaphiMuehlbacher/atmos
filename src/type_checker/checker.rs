@@ -526,6 +526,101 @@ impl<'hir> TypeChecker<'hir> {
 
                     expected
                 }
+                Path::Resolved {
+                    res:
+                        Res::SelfTy(
+                            info @ SelfTyInfo {
+                                self_ty_def: Some(def_id),
+                                ..
+                            },
+                        ),
+                    segments,
+                } => {
+                    self.prohibit_generic_args(segments);
+
+                    let ty = self.self_ty_rigid(info);
+                    self.unify(ty.clone(), expected.clone());
+                    let args = ty.args();
+
+                    let struct_def = self.collected_types.structs.get(def_id).unwrap().clone();
+
+                    let fields: Vec<_> = struct_def
+                        .fields
+                        .iter()
+                        .map(|field| self.collected_types.type_of.get(&field.def_id).unwrap().clone())
+                        .collect();
+
+                    if patterns.len() != fields.len() {
+                        self.session.push_error(CompilerError::TypeCheckerError(
+                            TypeCheckerError::StructArgArityMismatch {
+                                src: self.session.get_named_source(),
+                                expected_span: pattern.span,
+                                found_span: pattern.span,
+                                expected: fields.len(),
+                                found: patterns.len(),
+                            },
+                        ));
+                    }
+
+                    for (pattern, field_ty) in patterns.iter().zip(fields) {
+                        let field_ty = self.instantiate(&field_ty, &args);
+                        self.check_pattern(pattern, field_ty);
+                    }
+
+                    expected
+                }
+                Path::Unresolved {
+                    res:
+                        Res::SelfTy(
+                            info @ SelfTyInfo {
+                                self_ty_def: Some(enum_def_id),
+                                ..
+                            },
+                        ),
+                    resolved_segments,
+                    unresolved_segments,
+                } => {
+                    assert_eq!(unresolved_segments.len(), 1, "the enum variant can only be one segment");
+                    self.prohibit_generic_args(resolved_segments);
+                    self.prohibit_generic_args(unresolved_segments);
+
+                    let ty = self.self_ty_rigid(info);
+                    self.unify(ty.clone(), expected.clone());
+                    let args = ty.args();
+
+                    let variant_ident = &unresolved_segments[0].node.ident.node;
+                    let enum_def = self.collected_types.enums.get(enum_def_id).unwrap().clone();
+                    let variant = enum_def
+                        .variants
+                        .iter()
+                        .find(|variant| variant.ident == *variant_ident)
+                        .unwrap();
+
+                    let variant_fields: Vec<_> = variant
+                        .fields
+                        .iter()
+                        .map(|field| self.collected_types.type_of.get(&field.def_id).unwrap().clone())
+                        .collect();
+
+                    if patterns.len() != variant_fields.len() {
+                        self.session.push_error(CompilerError::TypeCheckerError(
+                            TypeCheckerError::StructArgArityMismatch {
+                                src: self.session.get_named_source(),
+                                expected_span: pattern.span,
+                                found_span: pattern.span,
+                                expected: variant_fields.len(),
+                                found: patterns.len(),
+                            },
+                        ));
+                    }
+
+                    for (pattern, field_ty) in patterns.iter().zip(variant_fields) {
+                        let field_ty = self.instantiate(&field_ty, &args);
+                        self.check_pattern(pattern, field_ty);
+                    }
+
+                    expected
+                }
                 _ => panic!("emit error"),
             },
             Pattern::Tuple(patterns) => {

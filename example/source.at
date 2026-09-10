@@ -1,28 +1,23 @@
-/*
-enum Test {
-    A,
-}
+struct Wrapper(i32);
 
-impl Test {
-    fn test(self: Self) -> i32 {
-        match self {
-            Self::A => 3,
-        }
+impl Wrapper {
+    fn foo() {
+        let w = Wrapper(3);
+        let Self(inner) = w;
     }
 }
-*/
 
-struct Foo<T> {
-    foo: T,
+enum Foo {
+    Bar {
+        baz: i32
+    }
 }
 
-impl<T> Foo<T> {
-    fn foo(self: Self, t: T) {
-        let a: Self = Foo { foo: t };
-        /*
-        let Self { foo: f } = Foo { foo: T };
-        let a: T = f;
-        */
+impl Foo {
+    fn foo() {
+        let a = Foo::Bar { baz: 3 };
+        let Self::Bar { baz: b } = a;
+        let a: i32 = b;
     }
 }
 
