@@ -321,6 +321,131 @@ impl<'hir> TypeChecker<'hir> {
                     }
                     expected
                 }
+                Path::Resolved {
+                    res:
+                        Res::SelfTy(
+                            info @ SelfTyInfo {
+                                self_ty_def: Some(def_id),
+                                ..
+                            },
+                        ),
+                    segments,
+                } => {
+                    self.prohibit_generic_args(segments);
+                    let ty = self.self_ty_rigid(info);
+                    self.unify(ty.clone(), expected.clone());
+                    let args = ty.args();
+
+                    let struct_def = self.collected_types.structs.get(def_id).unwrap().clone();
+                    let struct_fields: HashMap<Ident, Ty> = struct_def
+                        .fields
+                        .into_iter()
+                        .map(|field| {
+                            (
+                                field.ident,
+                                self.collected_types.type_of.get(&field.def_id).unwrap().clone(),
+                            )
+                        })
+                        .collect();
+
+                    let mut seen = HashSet::<&Ident>::new();
+                    for field in fields {
+                        let ident = &field.node.ident.node;
+
+                        let Some(field_ty) = struct_fields.get(ident) else {
+                            self.session
+                                .push_error(CompilerError::TypeCheckerError(TypeCheckerError::FieldNotFound {
+                                    src: self.session.get_named_source(),
+                                    span: field.node.ident.span,
+                                    field: ident.name.clone(),
+                                    ty: self.pretty_print_ty(&Ty::Struct(*def_id, args.clone())),
+                                }));
+                            continue;
+                        };
+
+                        if seen.contains(ident) {
+                            todo!("emit error for field specified more than once");
+                        }
+
+                        let field_ty = self.instantiate(&field_ty, &args);
+                        self.check_pattern(&field.node.pattern, field_ty);
+
+                        seen.insert(ident);
+                    }
+
+                    for _ in struct_fields.keys().filter(|ident| !seen.contains(ident)) {
+                        todo!("emit error for missing field")
+                    }
+                    expected
+                }
+                Path::Unresolved {
+                    res:
+                        Res::SelfTy(
+                            info @ SelfTyInfo {
+                                self_ty_def: Some(enum_def_id),
+                                ..
+                            },
+                        ),
+                    resolved_segments,
+                    unresolved_segments,
+                } => {
+                    assert_eq!(unresolved_segments.len(), 1, "the enum variant can only be one segment");
+                    self.prohibit_generic_args(resolved_segments);
+                    self.prohibit_generic_args(unresolved_segments);
+
+                    let ty = self.self_ty_rigid(info);
+                    self.unify(ty.clone(), expected.clone());
+                    let args = ty.args();
+
+                    let variant_ident = &unresolved_segments[0].node.ident.node;
+                    let enum_def = self.collected_types.enums.get(enum_def_id).unwrap().clone();
+                    let variant = enum_def
+                        .variants
+                        .iter()
+                        .find(|variant| variant.ident == *variant_ident)
+                        .unwrap();
+
+                    let variant_fields: HashMap<_, _> = variant
+                        .fields
+                        .iter()
+                        .map(|field| {
+                            (
+                                &field.ident,
+                                self.collected_types.type_of.get(&field.def_id).unwrap().clone(),
+                            )
+                        })
+                        .collect();
+
+                    let mut seen = HashSet::<&Ident>::new();
+                    for field in fields {
+                        let ident = &field.node.ident.node;
+
+                        let Some(field_ty) = variant_fields.get(ident) else {
+                            self.session
+                                .push_error(CompilerError::TypeCheckerError(TypeCheckerError::FieldNotFound {
+                                    src: self.session.get_named_source(),
+                                    span: field.span,
+                                    field: ident.name.clone(),
+                                    ty: self.pretty_print_ty(&Ty::Enum(*enum_def_id, args.clone())),
+                                }));
+                            continue;
+                        };
+
+                        if seen.contains(ident) {
+                            todo!("emit error for field specified more than once");
+                        }
+
+                        let field_ty = self.instantiate(&field_ty, &args);
+                        self.check_pattern(&field.node.pattern, field_ty);
+
+                        seen.insert(ident);
+                    }
+
+                    for _ in variant_fields.keys().filter(|ident| !seen.contains(*ident)) {
+                        todo!("emit error for missing field")
+                    }
+                    expected
+                }
                 _ => panic!("emit error"),
             },
             Pattern::TupleStruct(path, patterns) => match &path.node {

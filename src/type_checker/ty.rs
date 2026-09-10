@@ -88,6 +88,7 @@ impl InferTy {
 pub struct Variant {
     pub enum_def: DefId,
     pub def_id: DefId,
+    pub ident: Ident,
     pub fields: Vec<StructField>,
 }
 

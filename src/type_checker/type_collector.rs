@@ -168,6 +168,7 @@ impl<'hir> TypeCollector<'hir> {
                         .map(|variant| Variant {
                             enum_def: def_id,
                             def_id: variant.node.def_id,
+                            ident: variant.node.ident.node.clone(),
                             fields: self.collect_fields(&variant.node.data),
                         })
                         .collect();
