@@ -60,6 +60,15 @@ pub enum Ty {
     Err,
 }
 
+impl Ty {
+    pub fn args(self) -> GenericArgs {
+        match self {
+            Ty::Fn(_, generic_args) | Ty::Struct(_, generic_args) | Ty::Enum(_, generic_args) => generic_args,
+            _ => panic!(),
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum InferTy {
     TyVar(TyVarId),

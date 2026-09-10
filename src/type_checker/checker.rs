@@ -182,33 +182,31 @@ impl<'hir> TypeChecker<'hir> {
                     expected
                 }
                 Path::Unresolved {
-                    res:
-                        Res::SelfTy(SelfTyInfo {
-                            self_ty_def: Some(def_id),
-                            ..
-                        }),
+                    res: Res::SelfTy(self_ty_info),
                     resolved_segments,
                     unresolved_segments,
                 } => {
                     self.prohibit_generic_args(resolved_segments);
                     self.prohibit_generic_args(unresolved_segments);
-                    let ty = self.collected_types.type_of.get(def_id).unwrap().clone();
+                    let ty = self.self_ty_rigid(self_ty_info);
                     self.unify(ty, expected.clone());
                     expected
                 }
                 Path::Resolved {
                     res:
-                        Res::SelfTy(SelfTyInfo {
-                            self_ty_def: Some(def_id),
-                            ..
-                        }),
+                        Res::SelfTy(
+                            info @ SelfTyInfo {
+                                self_ty_def: Some(def_id),
+                                ..
+                            },
+                        ),
                     segments,
                 } => {
                     if self.collected_types.structs.get(def_id).unwrap().kind != StructKind::Unit {
                         panic!("emit error: expected unit struct")
                     }
                     self.prohibit_generic_args(segments);
-                    let ty = self.collected_types.type_of.get(def_id).unwrap().clone();
+                    let ty = self.self_ty_rigid(info);
                     self.unify(ty, expected.clone());
                     expected
                 }
@@ -482,18 +480,21 @@ impl<'hir> TypeChecker<'hir> {
                 PrimTy::Bool => ty::Ty::Bool,
                 PrimTy::Str => ty::Ty::Str,
             },
-            Res::SelfTy(SelfTyInfo {
-                impl_or_trait_def: def_id,
-                ..
-            }) => {
+            Res::SelfTy(self_ty_info) => {
                 self.prohibit_generic_args(segments);
-                let ty = self.collected_types.type_of.get(def_id).unwrap().clone();
-                let generics_count = self.generics_of(*def_id).len();
-                let args = self.identity_args(generics_count);
-                self.instantiate(&ty, &args)
+                self.self_ty_rigid(self_ty_info)
             }
             Res::Err => todo!(),
         }
+    }
+
+    fn self_ty_rigid(&self, self_ty_info: &SelfTyInfo) -> Ty {
+        // TODO: for trait definitions return Ty::GenericParam(0)
+        self.collected_types
+            .type_of
+            .get(&self_ty_info.impl_or_trait_def)
+            .unwrap()
+            .clone()
     }
 
     fn generics_of(&self, def_id: DefId) -> Vec<GenericParamDef> {
@@ -546,7 +547,7 @@ impl<'hir> TypeChecker<'hir> {
                 generic_args
             }
 
-            0 if generic_arg_pos == GenericArgPosition::Value => self.identity_args(generics.len()),
+            0 if generic_arg_pos == GenericArgPosition::Value => self.fresh_infer_args(generics.len()),
             _ => {
                 self.session.push_error(CompilerError::TypeCheckerError(
                     TypeCheckerError::GenericArgArityMismatch {
@@ -588,7 +589,7 @@ impl<'hir> TypeChecker<'hir> {
         self.generics_arg_for_segment(def_id, enum_segment, GenericArgPosition::Value)
     }
 
-    fn identity_args(&mut self, count: usize) -> GenericArgs {
+    fn fresh_infer_args(&mut self, count: usize) -> GenericArgs {
         (0..count)
             .map(|_| GenericArg::Type(self.infer_ctxt.next_ty_var()))
             .collect()
@@ -742,14 +743,15 @@ impl<'hir> TypeChecker<'hir> {
                             res:
                                 Res::SelfTy(SelfTyInfo {
                                     self_ty_def: Some(def_id),
+                                    impl_or_trait_def,
                                     ..
                                 }),
                             segments,
                         } => {
                             self.prohibit_generic_args(segments);
-                            let generics = self.generics_of(*def_id);
 
-                            let args = self.identity_args(generics.len());
+                            let ty = self.collected_types.type_of.get(impl_or_trait_def).unwrap().clone();
+                            let args = ty.args();
                             (def_id, args)
                         }
                         _ => panic!("shouldn't be possible"),
@@ -1068,8 +1070,10 @@ impl<'hir> TypeChecker<'hir> {
                                 let args = self.lower_variant_generic_args(*enum_def_id, segments);
                                 Ty::Enum(*enum_def_id, args)
                             }
-                            Res::Def(def_id, def_kind) => todo!(),
-                            Res::PrimTy(prim_ty) => {
+                            Res::Def(_, _) => {
+                                todo!("emit error for generic params: expected value found type")
+                            }
+                            Res::PrimTy(_) => {
                                 self.session.push_error(CompilerError::TypeCheckerError(
                                     TypeCheckerError::ExpectedValueType {
                                         src: self.session.get_named_source(),
@@ -1110,18 +1114,12 @@ impl<'hir> TypeChecker<'hir> {
                             self.lower_generic_args(assoc_item.def_id, unresolved_segments, GenericArgPosition::Value);
                         Ty::Fn(assoc_item.def_id, args)
                     }
-                    Res::SelfTy(SelfTyInfo {
-                        impl_or_trait_def: def_id,
-                        ..
-                    }) => {
+                    Res::SelfTy(self_ty_info) => {
                         match unresolved_segments.len() {
-                            0 => {
-                                let ty = self.collected_types.type_of.get(def_id).unwrap().clone();
-                                let generics_count = self.generics_of(*def_id).len();
-                                let args = self.identity_args(generics_count);
-                                self.instantiate(&ty, &args)
-                            }
+                            0 => self.self_ty_rigid(self_ty_info),
                             1 => {
+                                let def_id = &self_ty_info.impl_or_trait_def;
+
                                 let item = self
                                     .collected_types
                                     .assoc_items
@@ -1135,7 +1133,7 @@ impl<'hir> TypeChecker<'hir> {
                                 // TODO: for now only associated functions
                                 let Ty::Fn(def_id, _) = *item else { panic!() };
                                 let count = self.generics_of(def_id).len();
-                                let args = self.identity_args(count);
+                                let args = self.fresh_infer_args(count);
 
                                 Ty::Fn(def_id, args)
                             }

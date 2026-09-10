@@ -414,10 +414,12 @@ impl<'hir> TypeCollector<'hir> {
                         PrimTy::Str => ty::Ty::Str,
                     },
                     Res::SelfTy(SelfTyInfo {
-                        self_ty_def, trait_def, ..
+                        self_ty_def,
+                        trait_def,
+                        impl_or_trait_def,
                     }) => {
-                        if let Some(def_id) = self_ty_def {
-                            self.collected_types.type_of.get(def_id).unwrap().clone()
+                        if self_ty_def.is_some() {
+                            self.collected_types.type_of.get(impl_or_trait_def).unwrap().clone()
                         } else if trait_def.is_some() {
                             ty::Ty::GenericParam(0)
                         } else {
