@@ -28,15 +28,14 @@ impl PrimTy {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Debug)]
-pub struct SelfTyInfo {
-    /// The `DefId` of the type that Self refers to (struct, enum, or type alias in impl/trait)
-    /// `None` when in trait definition
-    pub self_ty_def: Option<DefId>,
-    /// If inside a trait impl, the `DefId` of the trait being implemented
-    pub trait_def: Option<DefId>,
-    /// The `DefId` of the impl or trait block itself
-    pub impl_or_trait_def: DefId,
+#[derive(Clone, PartialEq, Debug)]
+pub enum SelfTyKind {
+    /// `Self` inside a struct/enum definition, where `alias_to` is the type being defined.
+    AdtDef { alias_to: DefId },
+    /// `Self` inside a trait definition where `trait_def` is the trait itself.
+    TraitDef { trait_def: DefId },
+    /// `Self` inside an impl_block, where `impl_block` is the impl/trait block itself.
+    Impl { impl_block: DefId },
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -44,7 +43,7 @@ pub enum Res<Id = HirId> {
     Local(Id),
     Def(DefId, DefKind),
     PrimTy(PrimTy),
-    SelfTy(SelfTyInfo),
+    SelfTy(SelfTyKind),
     Err,
 }
 

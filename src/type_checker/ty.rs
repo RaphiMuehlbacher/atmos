@@ -67,6 +67,13 @@ impl Ty {
             _ => panic!(),
         }
     }
+
+    pub fn def_id(&self) -> DefId {
+        match self {
+            Ty::Fn(def_id, _) | Ty::Struct(def_id, _) | Ty::Enum(def_id, _) => *def_id,
+            _ => panic!(),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]

@@ -3,10 +3,9 @@ use crate::parser::AstId;
 use crate::parser::ast::{
     AstNode, BlockExpr, Expr, GenericParam, Ident, Item, LetStmt, Path, PathSegment, Pattern, Ty,
 };
-use crate::resolver::DefId;
 use crate::resolver::defs::{DefKind, PartialRes};
 use crate::resolver::modules::{Binding, ModuleId, ModuleKind};
-use crate::resolver::ribs::{PrimTy, Res, Rib, RibKind, SelfTyInfo};
+use crate::resolver::ribs::{PrimTy, Res, Rib, RibKind, SelfTyKind};
 use crate::resolver::visitor::Visitor;
 use crate::resolver::{ResolverError, visitor};
 use crate::{Resolver, visit_opt};
@@ -16,7 +15,7 @@ pub struct LateResolver<'a, 'r> {
     r: &'a mut Resolver<'r>,
     ribs: Vec<Rib>,
     parent: ModuleId,
-    self_ty_info: Option<SelfTyInfo>,
+    self_ty_kind: Option<SelfTyKind>,
 }
 
 impl<'a, 'r> LateResolver<'a, 'r> {
@@ -25,7 +24,7 @@ impl<'a, 'r> LateResolver<'a, 'r> {
             r,
             ribs: vec![Rib::item()],
             parent: root,
-            self_ty_info: None,
+            self_ty_kind: None,
         }
     }
 
@@ -83,12 +82,12 @@ impl<'a, 'r> LateResolver<'a, 'r> {
             Pattern::Ident(ident) => {
                 if let Some(res) = self.lookup_value(&ident.node) {
                     match res {
-                        res @ Res::Def(def_id, _)
-                        | res @ Res::SelfTy(SelfTyInfo {
-                            self_ty_def: Some(def_id),
-                            ..
-                        }) => {
+                        res @ Res::Def(def_id, _) => {
                             self.r.defs.insert_ast_id(ident.ast_id, def_id);
+                            self.r.defs.insert_resolution(ident.ast_id, res);
+                            return;
+                        }
+                        res @ Res::SelfTy(SelfTyKind::Impl { .. }) => {
                             self.r.defs.insert_resolution(ident.ast_id, res);
                             return;
                         }
@@ -166,21 +165,6 @@ impl<'a, 'r> LateResolver<'a, 'r> {
             .insert(ident.node.clone(), Res::Local(pattern.ast_id));
     }
 
-    fn get_def_from_ty(&self, ty: &AstNode<Ty>) -> Option<DefId> {
-        match &ty.node {
-            Ty::Path(path) => {
-                if path.node.segments.len() == 1 {
-                    let ident = &path.node.segments[0].node.ident.node;
-                    if let Some(Res::Def(def_id, _)) = self.lookup_modules(ident, self.parent) {
-                        return Some(def_id);
-                    }
-                }
-                self.r.defs.get_def_from_ast(path.ast_id).copied()
-            }
-            _ => None,
-        }
-    }
-
     fn resolve_path(&mut self, path: &AstNode<Path>) {
         let segments = &path.node.segments;
 
@@ -199,14 +183,16 @@ impl<'a, 'r> LateResolver<'a, 'r> {
         let first_ident = &segments[0].node.ident.node;
 
         if first_ident.name == "Self" {
-            match self.self_ty_info {
+            match &self.self_ty_kind {
                 Some(self_ty_info) => {
                     if segments.len() == 1 {
-                        self.r.defs.insert_resolution(path.ast_id, Res::SelfTy(self_ty_info));
+                        self.r
+                            .defs
+                            .insert_resolution(path.ast_id, Res::SelfTy(self_ty_info.clone()));
                     } else {
                         self.r.defs.partial_res.insert(
                             path.ast_id,
-                            PartialRes::new(Res::SelfTy(self.self_ty_info.unwrap()), path.node.segments.len() - 1),
+                            PartialRes::new(Res::SelfTy(self_ty_info.clone()), path.node.segments.len() - 1),
                         );
                     }
                 }
@@ -438,41 +424,22 @@ impl<'a, 'r> LateResolver<'a, 'r> {
 impl Visitor for LateResolver<'_, '_> {
     fn visit_item(&mut self, item: &AstNode<Item>) {
         let orig_module = self.parent;
-        let orig_self_ty_info = self.self_ty_info;
+        let orig_self_ty_info = self.self_ty_kind.take();
 
         match &item.node {
-            Item::Impl(impl_decl) => {
-                let impl_def_id = *self.r.defs.get_def_from_ast(item.ast_id).unwrap();
-                let self_ty_def = self.get_def_from_ty(&impl_decl.self_ty);
-                let trait_def = impl_decl
-                    .for_trait
-                    .as_ref()
-                    .and_then(|path| self.r.defs.get_def_from_ast(path.ast_id).copied());
+            Item::Impl(_) => {
+                let impl_block = *self.r.defs.get_def_from_ast(item.ast_id).unwrap();
 
-                let self_ty_info = SelfTyInfo {
-                    self_ty_def,
-                    trait_def,
-                    impl_or_trait_def: impl_def_id,
-                };
-                self.self_ty_info = Some(self_ty_info);
-                self.innermost_rib()
-                    .insert(Ident::from(String::from("Self")), Res::SelfTy(self_ty_info));
+                let self_ty_kind = SelfTyKind::Impl { impl_block };
+                self.self_ty_kind = Some(self_ty_kind.clone());
             }
             Item::Trait(_) => {
-                let trait_def_id = *self.r.defs.get_def_from_ast(item.ast_id).unwrap();
-                self.self_ty_info = Some(SelfTyInfo {
-                    self_ty_def: None,
-                    trait_def: Some(trait_def_id),
-                    impl_or_trait_def: trait_def_id,
-                });
+                let trait_def = *self.r.defs.get_def_from_ast(item.ast_id).unwrap();
+                self.self_ty_kind = Some(SelfTyKind::TraitDef { trait_def });
             }
             Item::Struct(_) | Item::Enum(_) => {
-                let def_id = *self.r.defs.get_def_from_ast(item.ast_id).unwrap();
-                self.self_ty_info = Some(SelfTyInfo {
-                    self_ty_def: Some(def_id),
-                    trait_def: None,
-                    impl_or_trait_def: def_id,
-                });
+                let adt_def_id = *self.r.defs.get_def_from_ast(item.ast_id).unwrap();
+                self.self_ty_kind = Some(SelfTyKind::AdtDef { alias_to: adt_def_id });
             }
             _ => {}
         }
@@ -482,9 +449,16 @@ impl Visitor for LateResolver<'_, '_> {
             self.parent = *module_id;
         }
 
-        self.with_rib(RibKind::Item, |this| visitor::walk_item(this, item));
+        self.with_rib(RibKind::Item, |this| {
+            if let Item::Impl(_) = item.node {
+                let kind = this.self_ty_kind.clone().unwrap();
+                this.innermost_rib()
+                    .insert(Ident::from(String::from("Self")), Res::SelfTy(kind));
+            }
+            visitor::walk_item(this, item)
+        });
         self.parent = orig_module;
-        self.self_ty_info = orig_self_ty_info;
+        self.self_ty_kind = orig_self_ty_info;
     }
 
     fn visit_let_stmt(&mut self, let_stmt: &AstNode<LetStmt>) {

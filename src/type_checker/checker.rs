@@ -6,7 +6,7 @@ use crate::error::CompilerError;
 use crate::parser::ast::Ident;
 use crate::resolver::DefId;
 use crate::resolver::defs::DefKind::{self, EnumVariant};
-use crate::resolver::ribs::{PrimTy, Res, SelfTyInfo};
+use crate::resolver::ribs::{PrimTy, Res, SelfTyKind};
 use crate::type_checker::error::TypeCheckerError;
 use crate::type_checker::ty::{
     self, CollectedTypes, GenericArg, GenericArgs, GenericParamDef, InferTy, StructKind, Ty, TyVarId,
@@ -182,31 +182,25 @@ impl<'hir> TypeChecker<'hir> {
                     expected
                 }
                 Path::Unresolved {
-                    res: Res::SelfTy(self_ty_info),
+                    res: Res::SelfTy(kind @ SelfTyKind::Impl { .. }),
                     resolved_segments,
                     unresolved_segments,
                 } => {
                     self.prohibit_generic_args(resolved_segments);
                     self.prohibit_generic_args(unresolved_segments);
-                    let ty = self.self_ty_rigid(self_ty_info);
+                    let ty = self.self_ty_rigid(kind);
                     self.unify(ty, expected.clone());
                     expected
                 }
                 Path::Resolved {
-                    res:
-                        Res::SelfTy(
-                            info @ SelfTyInfo {
-                                self_ty_def: Some(def_id),
-                                ..
-                            },
-                        ),
+                    res: Res::SelfTy(kind @ SelfTyKind::Impl { .. }),
                     segments,
                 } => {
-                    if self.collected_types.structs.get(def_id).unwrap().kind != StructKind::Unit {
+                    self.prohibit_generic_args(segments);
+                    let ty = self.self_ty_rigid(kind);
+                    if self.collected_types.structs.get(&ty.def_id()).unwrap().kind != StructKind::Unit {
                         panic!("emit error: expected unit struct")
                     }
-                    self.prohibit_generic_args(segments);
-                    let ty = self.self_ty_rigid(info);
                     self.unify(ty, expected.clone());
                     expected
                 }
@@ -219,7 +213,7 @@ impl<'hir> TypeChecker<'hir> {
                 } => {
                     let args = self.lower_generic_args(*def_id, segments, GenericArgPosition::Value);
                     let ty = Ty::Struct(*def_id, args.clone());
-                    self.unify(ty, expected.clone());
+                    self.unify(ty.clone(), expected.clone());
 
                     let struct_def = self.collected_types.structs.get(def_id).unwrap().clone();
                     let struct_fields: HashMap<Ident, Ty> = struct_def
@@ -243,7 +237,7 @@ impl<'hir> TypeChecker<'hir> {
                                     src: self.session.get_named_source(),
                                     span: field.node.ident.span,
                                     field: ident.name.clone(),
-                                    ty: self.pretty_print_ty(&Ty::Struct(*def_id, args.clone())),
+                                    ty: self.pretty_print_ty(&ty),
                                 }));
                             continue;
                         };
@@ -270,7 +264,7 @@ impl<'hir> TypeChecker<'hir> {
                     let enum_def_id = self.parent_map.get(variant_def_id).unwrap();
                     let args = self.lower_generic_args(*enum_def_id, segments, GenericArgPosition::Value);
                     let ty = Ty::Enum(*enum_def_id, args.clone());
-                    self.unify(ty, expected.clone());
+                    self.unify(ty.clone(), expected.clone());
 
                     let enum_def = self.collected_types.enums.get(enum_def_id).unwrap().clone();
 
@@ -301,7 +295,7 @@ impl<'hir> TypeChecker<'hir> {
                                     src: self.session.get_named_source(),
                                     span: field.span,
                                     field: ident.name.clone(),
-                                    ty: self.pretty_print_ty(&Ty::Enum(*enum_def_id, args.clone())),
+                                    ty: self.pretty_print_ty(&ty),
                                 }));
                             continue;
                         };
@@ -322,21 +316,15 @@ impl<'hir> TypeChecker<'hir> {
                     expected
                 }
                 Path::Resolved {
-                    res:
-                        Res::SelfTy(
-                            info @ SelfTyInfo {
-                                self_ty_def: Some(def_id),
-                                ..
-                            },
-                        ),
+                    res: Res::SelfTy(kind @ SelfTyKind::Impl { .. }),
                     segments,
                 } => {
                     self.prohibit_generic_args(segments);
-                    let ty = self.self_ty_rigid(info);
+                    let ty = self.self_ty_rigid(kind);
                     self.unify(ty.clone(), expected.clone());
-                    let args = ty.args();
+                    let args = ty.clone().args();
 
-                    let struct_def = self.collected_types.structs.get(def_id).unwrap().clone();
+                    let struct_def = self.collected_types.structs.get(&ty.def_id()).unwrap().clone();
                     let struct_fields: HashMap<Ident, Ty> = struct_def
                         .fields
                         .into_iter()
@@ -358,7 +346,7 @@ impl<'hir> TypeChecker<'hir> {
                                     src: self.session.get_named_source(),
                                     span: field.node.ident.span,
                                     field: ident.name.clone(),
-                                    ty: self.pretty_print_ty(&Ty::Struct(*def_id, args.clone())),
+                                    ty: self.pretty_print_ty(&ty),
                                 }));
                             continue;
                         };
@@ -379,13 +367,7 @@ impl<'hir> TypeChecker<'hir> {
                     expected
                 }
                 Path::Unresolved {
-                    res:
-                        Res::SelfTy(
-                            info @ SelfTyInfo {
-                                self_ty_def: Some(enum_def_id),
-                                ..
-                            },
-                        ),
+                    res: Res::SelfTy(kind @ SelfTyKind::Impl { .. }),
                     resolved_segments,
                     unresolved_segments,
                 } => {
@@ -393,12 +375,12 @@ impl<'hir> TypeChecker<'hir> {
                     self.prohibit_generic_args(resolved_segments);
                     self.prohibit_generic_args(unresolved_segments);
 
-                    let ty = self.self_ty_rigid(info);
+                    let ty = self.self_ty_rigid(kind);
                     self.unify(ty.clone(), expected.clone());
-                    let args = ty.args();
+                    let args = ty.clone().args();
 
                     let variant_ident = &unresolved_segments[0].node.ident.node;
-                    let enum_def = self.collected_types.enums.get(enum_def_id).unwrap().clone();
+                    let enum_def = self.collected_types.enums.get(&ty.def_id()).unwrap().clone();
                     let variant = enum_def
                         .variants
                         .iter()
@@ -426,7 +408,7 @@ impl<'hir> TypeChecker<'hir> {
                                     src: self.session.get_named_source(),
                                     span: field.span,
                                     field: ident.name.clone(),
-                                    ty: self.pretty_print_ty(&Ty::Enum(*enum_def_id, args.clone())),
+                                    ty: self.pretty_print_ty(&ty),
                                 }));
                             continue;
                         };
@@ -527,22 +509,16 @@ impl<'hir> TypeChecker<'hir> {
                     expected
                 }
                 Path::Resolved {
-                    res:
-                        Res::SelfTy(
-                            info @ SelfTyInfo {
-                                self_ty_def: Some(def_id),
-                                ..
-                            },
-                        ),
+                    res: Res::SelfTy(kind @ SelfTyKind::Impl { .. }),
                     segments,
                 } => {
                     self.prohibit_generic_args(segments);
 
-                    let ty = self.self_ty_rigid(info);
+                    let ty = self.self_ty_rigid(kind);
                     self.unify(ty.clone(), expected.clone());
-                    let args = ty.args();
+                    let args = ty.clone().args();
 
-                    let struct_def = self.collected_types.structs.get(def_id).unwrap().clone();
+                    let struct_def = self.collected_types.structs.get(&ty.def_id()).unwrap().clone();
 
                     let fields: Vec<_> = struct_def
                         .fields
@@ -570,13 +546,7 @@ impl<'hir> TypeChecker<'hir> {
                     expected
                 }
                 Path::Unresolved {
-                    res:
-                        Res::SelfTy(
-                            info @ SelfTyInfo {
-                                self_ty_def: Some(enum_def_id),
-                                ..
-                            },
-                        ),
+                    res: Res::SelfTy(kind @ SelfTyKind::Impl { .. }),
                     resolved_segments,
                     unresolved_segments,
                 } => {
@@ -584,12 +554,12 @@ impl<'hir> TypeChecker<'hir> {
                     self.prohibit_generic_args(resolved_segments);
                     self.prohibit_generic_args(unresolved_segments);
 
-                    let ty = self.self_ty_rigid(info);
+                    let ty = self.self_ty_rigid(kind);
                     self.unify(ty.clone(), expected.clone());
-                    let args = ty.args();
+                    let args = ty.clone().args();
 
                     let variant_ident = &unresolved_segments[0].node.ident.node;
-                    let enum_def = self.collected_types.enums.get(enum_def_id).unwrap().clone();
+                    let enum_def = self.collected_types.enums.get(&ty.def_id()).unwrap().clone();
                     let variant = enum_def
                         .variants
                         .iter()
@@ -700,21 +670,22 @@ impl<'hir> TypeChecker<'hir> {
                 PrimTy::Bool => ty::Ty::Bool,
                 PrimTy::Str => ty::Ty::Str,
             },
-            Res::SelfTy(self_ty_info) => {
+            Res::SelfTy(kind @ SelfTyKind::Impl { .. } | kind @ SelfTyKind::TraitDef { .. }) => {
                 self.prohibit_generic_args(segments);
-                self.self_ty_rigid(self_ty_info)
+                self.self_ty_rigid(kind)
             }
+            Res::SelfTy(SelfTyKind::AdtDef { .. }) => panic!("adt definitions don't get typechecked here"),
             Res::Err => todo!(),
         }
     }
 
-    fn self_ty_rigid(&self, self_ty_info: &SelfTyInfo) -> Ty {
-        // TODO: for trait definitions return Ty::GenericParam(0)
-        self.collected_types
-            .type_of
-            .get(&self_ty_info.impl_or_trait_def)
-            .unwrap()
-            .clone()
+    fn self_ty_rigid(&self, self_ty_kind: &SelfTyKind) -> Ty {
+        match self_ty_kind {
+            SelfTyKind::AdtDef { alias_to: def_id } | SelfTyKind::Impl { impl_block: def_id } => {
+                self.collected_types.type_of.get(def_id).unwrap().clone()
+            }
+            SelfTyKind::TraitDef { .. } => Ty::GenericParam(0),
+        }
     }
 
     fn generics_of(&self, def_id: DefId) -> Vec<GenericParamDef> {
@@ -1000,21 +971,15 @@ impl<'hir> TypeChecker<'hir> {
                     Ty::Struct(*def_id, args)
                 }
                 Path::Resolved {
-                    res:
-                        Res::SelfTy(
-                            info @ SelfTyInfo {
-                                self_ty_def: Some(def_id),
-                                ..
-                            },
-                        ),
+                    res: Res::SelfTy(kind @ SelfTyKind::Impl { .. }),
                     segments,
                 } => {
                     self.prohibit_generic_args(segments);
 
-                    let ty = self.self_ty_rigid(info);
+                    let ty = self.self_ty_rigid(kind);
                     let args = ty.clone().args();
 
-                    let struct_def = self.collected_types.structs.get(def_id).unwrap().clone();
+                    let struct_def = self.collected_types.structs.get(&ty.def_id()).unwrap().clone();
                     let struct_fields: HashMap<_, _> = struct_def
                         .fields
                         .into_iter()
@@ -1036,7 +1001,7 @@ impl<'hir> TypeChecker<'hir> {
                                     src: self.session.get_named_source(),
                                     span: field_expr.span,
                                     field: ident.name.clone(),
-                                    ty: self.pretty_print_ty(&Ty::Struct(*def_id, args.clone())),
+                                    ty: self.pretty_print_ty(&ty),
                                 }));
                             continue;
                         };
@@ -1060,20 +1025,16 @@ impl<'hir> TypeChecker<'hir> {
                 }
 
                 Path::Unresolved {
-                    res:
-                        Res::SelfTy(
-                            info @ SelfTyInfo {
-                                self_ty_def: Some(enum_def_id),
-                                ..
-                            },
-                        ),
+                    res: Res::SelfTy(kind @ SelfTyKind::Impl { .. }),
                     resolved_segments,
                     unresolved_segments,
                 } => {
                     assert_eq!(unresolved_segments.len(), 1, "the enum variant can only be one segment");
                     self.prohibit_generic_args(resolved_segments);
                     self.prohibit_generic_args(unresolved_segments);
-                    let ty = self.self_ty_rigid(info);
+
+                    let ty = self.self_ty_rigid(kind);
+                    let enum_def_id = &ty.def_id();
                     let args = ty.clone().args();
 
                     let variant_ident = &unresolved_segments[0].node.ident.node;
@@ -1268,7 +1229,7 @@ impl<'hir> TypeChecker<'hir> {
                 let ident = &method_call.method.node.ident.node;
 
                 match &receiver {
-                    Ty::Struct(def_id, args) | Ty::Enum(def_id, args) => {
+                    Ty::Struct(def_id, _) | Ty::Enum(def_id, _) => {
                         let args = self.lower_generic_args(
                             *def_id,
                             slice::from_ref(&method_call.method),
@@ -1409,7 +1370,16 @@ impl<'hir> TypeChecker<'hir> {
                                 ));
                                 Ty::Err
                             }
-                            Res::SelfTy(self_ty_info) => self.self_ty_rigid(self_ty_info),
+                            Res::SelfTy(kind @ SelfTyKind::Impl { .. }) => self.self_ty_rigid(kind),
+                            Res::SelfTy(_) => {
+                                self.session.push_error(CompilerError::TypeCheckerError(
+                                    TypeCheckerError::ExpectedValueType {
+                                        src: self.session.get_named_source(),
+                                        span: path.span,
+                                    },
+                                ));
+                                Ty::Err
+                            }
                             Res::Err => todo!(),
                         }
                     }
@@ -1441,16 +1411,14 @@ impl<'hir> TypeChecker<'hir> {
                             self.lower_generic_args(assoc_item.def_id, unresolved_segments, GenericArgPosition::Value);
                         Ty::Fn(assoc_item.def_id, args)
                     }
-                    Res::SelfTy(self_ty_info) => {
+                    Res::SelfTy(self_ty_kind @ SelfTyKind::Impl { impl_block }) => {
                         match unresolved_segments.len() {
-                            0 => self.self_ty_rigid(self_ty_info),
+                            0 => self.self_ty_rigid(self_ty_kind),
                             1 => {
-                                let def_id = &self_ty_info.impl_or_trait_def;
-
                                 let item = self
                                     .collected_types
                                     .assoc_items
-                                    .get(def_id)
+                                    .get(impl_block)
                                     .unwrap()
                                     .iter()
                                     .find(|assoc| assoc.ident == unresolved_segments[0].node.ident.node)

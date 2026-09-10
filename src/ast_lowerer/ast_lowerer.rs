@@ -2,7 +2,7 @@ use crate::ast_lowerer::hir::{self, HirId, HirNode};
 use crate::parser::ast::AstNode;
 use crate::parser::{AstId, ast};
 use crate::resolver::defs::{DefId, DefinitionMap};
-use crate::resolver::ribs::{Res, SelfTyInfo};
+use crate::resolver::ribs::{Res, SelfTyKind};
 use std::collections::HashMap;
 
 pub struct AstLowerer<'ast> {
@@ -265,7 +265,7 @@ impl<'ast> AstLowerer<'ast> {
             }
             Res::Def(def_id, def_kind) => Res::Def(*def_id, *def_kind),
             Res::PrimTy(prim_ty) => Res::PrimTy(*prim_ty),
-            Res::SelfTy(self_ty_info) => Res::SelfTy(*self_ty_info),
+            Res::SelfTy(self_ty_info) => Res::SelfTy(self_ty_info.clone()),
             Res::Err => Res::Err,
         }
     }
@@ -637,10 +637,8 @@ impl<'ast> AstLowerer<'ast> {
                         self.ast_to_hir.insert(*ast_id, hir_id);
                         hir::Pattern::Binding(ident.clone().into())
                     }
-                    res @ Res::Def(_, _)
-                    | res @ Res::SelfTy(SelfTyInfo {
-                        self_ty_def: Some(_), ..
-                    }) => {
+                    // Unit structs in patterns get parsed as `Ident` but have to be lowered to `Path`
+                    res @ Res::Def(_, _) | res @ Res::SelfTy(SelfTyKind::Impl { .. }) => {
                         let res = self.lower_res(res);
                         let segment = hir::PathSegment {
                             ident: ident.clone().into(),

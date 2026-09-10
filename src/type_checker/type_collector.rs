@@ -5,7 +5,7 @@ use crate::ast_lowerer::hir::{
 use crate::error::CompilerError;
 use crate::resolver::DefId;
 use crate::resolver::defs::DefKind;
-use crate::resolver::ribs::{PrimTy, Res, SelfTyInfo};
+use crate::resolver::ribs::{PrimTy, Res, SelfTyKind};
 use crate::type_checker::error::TypeCheckerError;
 use crate::type_checker::ty::{
     self, AssocItemDef, CollectedTypes, EnumDef, FnSig, GenericArg, GenericArgs, Generics, StructDef, StructField,
@@ -414,19 +414,10 @@ impl<'hir> TypeCollector<'hir> {
                         PrimTy::Bool => ty::Ty::Bool,
                         PrimTy::Str => ty::Ty::Str,
                     },
-                    Res::SelfTy(SelfTyInfo {
-                        self_ty_def,
-                        trait_def,
-                        impl_or_trait_def,
-                    }) => {
-                        if self_ty_def.is_some() {
-                            self.collected_types.type_of.get(impl_or_trait_def).unwrap().clone()
-                        } else if trait_def.is_some() {
-                            ty::Ty::GenericParam(0)
-                        } else {
-                            unreachable!()
-                        }
+                    Res::SelfTy(SelfTyKind::Impl { impl_block: def_id } | SelfTyKind::AdtDef { alias_to: def_id }) => {
+                        self.collected_types.type_of.get(def_id).unwrap().clone()
                     }
+                    Res::SelfTy(SelfTyKind::TraitDef { .. }) => ty::Ty::GenericParam(0),
                     Res::Err => ty::Ty::Err,
                 },
                 Path::Unresolved {
