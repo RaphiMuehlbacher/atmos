@@ -466,7 +466,7 @@ impl Visitor for LateResolver<'_, '_> {
                     impl_or_trait_def: trait_def_id,
                 });
             }
-            Item::Struct(_) | Item::Enum(_) | Item::TyAlias(_) => {
+            Item::Struct(_) | Item::Enum(_) => {
                 let def_id = *self.r.defs.get_def_from_ast(item.ast_id).unwrap();
                 self.self_ty_info = Some(SelfTyInfo {
                     self_ty_def: Some(def_id),
