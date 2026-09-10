@@ -1,8 +1,8 @@
-struct Wrapper(i32);
+struct Wrapper<T>(T);
 
-impl Wrapper {
-    fn foo() {
-        let w = Wrapper(3);
+impl<T> Wrapper<T> {
+    fn foo(t: T) {
+        let w = Self(t);
         let Self(inner) = w;
     }
 }
@@ -15,7 +15,7 @@ enum Foo {
 
 impl Foo {
     fn foo() {
-        let a = Foo::Bar { baz: 3 };
+        let a = Self::Bar { baz: 3 };
         let Self::Bar { baz: b } = a;
         let a: i32 = b;
     }
