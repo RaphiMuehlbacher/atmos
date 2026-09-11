@@ -1,24 +1,12 @@
-struct Wrapper<T>(T);
-
-impl<T> Wrapper<T> {
-    fn foo(t: T) {
-        let w = Self(t);
-        let Self(inner) = w;
+struct S;
+impl S {
+    fn f<T>(self: Self, t: T) {
     }
 }
 
-enum Foo {
-    Bar {
-        baz: i32
-    }
-}
-
-impl Foo {
-    fn foo() {
-        let a = Self::Bar { baz: 3 };
-        let Self::Bar { baz: b } = a;
-        let a: i32 = b;
-    }
+fn main() {
+    let s = S;
+    s.f<u32>(3);
 }
 
 /*

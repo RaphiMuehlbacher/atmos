@@ -9,7 +9,7 @@ use crate::resolver::defs::DefKind::{self, EnumVariant};
 use crate::resolver::ribs::{PrimTy, Res, SelfTyKind};
 use crate::type_checker::error::TypeCheckerError;
 use crate::type_checker::ty::{
-    self, CollectedTypes, GenericArg, GenericArgs, GenericParamDef, InferTy, StructKind, Ty, TyVarId,
+    self, AssocKind, CollectedTypes, GenericArg, GenericArgs, GenericParamDef, InferTy, StructKind, Ty, TyVarId,
 };
 use miette::{SourceOffset, SourceSpan};
 use std::collections::{HashMap, HashSet};
@@ -1230,18 +1230,19 @@ impl<'hir> TypeChecker<'hir> {
 
                 match &receiver {
                     Ty::Struct(def_id, _) | Ty::Enum(def_id, _) => {
-                        let args = self.lower_generic_args(
-                            *def_id,
-                            slice::from_ref(&method_call.method),
-                            GenericArgPosition::Value,
-                        );
                         let impls = self.collected_types.impls_of.get(def_id).unwrap();
                         let assoc_item = impls
                             .iter()
                             .flat_map(|def_id| self.collected_types.assoc_items.get(def_id).unwrap())
-                            .find(|assoc| &assoc.ident == ident)
+                            .find(|assoc| &assoc.ident == ident && assoc.kind == AssocKind::Method)
                             .expect("emit error for associated item not found")
                             .clone();
+
+                        let args = self.lower_generic_args(
+                            assoc_item.def_id,
+                            slice::from_ref(&method_call.method),
+                            GenericArgPosition::Value,
+                        );
 
                         let fn_sig = self.collected_types.fn_sig.get(&assoc_item.def_id).unwrap().clone();
 

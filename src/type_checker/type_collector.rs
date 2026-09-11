@@ -76,6 +76,7 @@ impl<'hir> TypeCollector<'hir> {
                     .push(AssocItemDef {
                         ident: assoc_item.node.ident(),
                         def_id: assoc_item.node.def_id,
+                        kind: ty::AssocKind::from(&assoc_item.node.kind),
                     });
             }
         }

@@ -1,5 +1,5 @@
 use crate::ast_lowerer::hir::{self, Expr, GenericParam, HirNode};
-use crate::parser::ast::Ident;
+use crate::parser::ast::{self, Ident};
 use crate::resolver::DefId;
 use std::collections::HashMap;
 
@@ -147,8 +147,36 @@ pub struct PredicateDef {
 pub struct AssocItemDef {
     pub def_id: DefId,
     pub ident: Ident,
+    pub kind: AssocKind,
     // TODO: maybe needed or changed
     // pub parent: AssocParent,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum AssocKind {
+    Fn,
+    Method,
+    Type,
+}
+
+impl From<&hir::AssociatedItemKind> for AssocKind {
+    fn from(kind: &hir::AssociatedItemKind) -> Self {
+        match kind {
+            hir::AssociatedItemKind::Fn(sig, _) => {
+                let first_param = sig.node.params.first();
+                let pattern = first_param.map(|param| &param.node.pattern.node);
+
+                match pattern {
+                    Some(hir::Pattern::Binding(hir::HirNode {
+                        node: ast::Ident { name },
+                        ..
+                    })) if name == "self" => Self::Method,
+                    _ => Self::Fn,
+                }
+            }
+            hir::AssociatedItemKind::Type(_) => Self::Type,
+        }
+    }
 }
 
 // #[derive(Debug, Clone)]
