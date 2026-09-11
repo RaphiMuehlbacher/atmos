@@ -1172,46 +1172,92 @@ impl<'hir> TypeChecker<'hir> {
                         let hir::Expr::Path(path) = &call_expr.callee.node else {
                             panic!()
                         };
-                        let Path::Resolved {
-                            res: Res::Def(variant_def_id, EnumVariant { .. }),
-                            segments: _,
-                        } = &path.node
-                        else {
-                            panic!()
-                        };
 
-                        let enum_def = self.collected_types.enums.get(&def_id).unwrap().clone();
-                        let variant = enum_def
-                            .variants
-                            .iter()
-                            .find(|variant| variant.def_id == *variant_def_id)
-                            .unwrap();
+                        match &path.node {
+                            Path::Resolved {
+                                res: Res::Def(variant_def_id, EnumVariant),
+                                segments,
+                            } => {
+                                let enum_def = self.collected_types.enums.get(&def_id).unwrap().clone();
+                                let variant = enum_def
+                                    .variants
+                                    .iter()
+                                    .find(|variant| variant.def_id == *variant_def_id)
+                                    .unwrap();
 
-                        let fields: Vec<_> = variant
-                            .fields
-                            .iter()
-                            .map(|field| self.collected_types.type_of.get(&field.def_id).unwrap().clone())
-                            .collect();
+                                let fields: Vec<_> = variant
+                                    .fields
+                                    .iter()
+                                    .map(|field| self.collected_types.type_of.get(&field.def_id).unwrap().clone())
+                                    .collect();
 
-                        if call_expr.args.len() != fields.len() {
-                            self.session.push_error(CompilerError::TypeCheckerError(
-                                TypeCheckerError::StructArgArityMismatch {
-                                    src: self.session.get_named_source(),
-                                    expected_span: expr.span,
-                                    found_span: expr.span,
-                                    expected: fields.len(),
-                                    found: call_expr.args.len(),
-                                },
-                            ));
+                                if call_expr.args.len() != fields.len() {
+                                    self.session.push_error(CompilerError::TypeCheckerError(
+                                        TypeCheckerError::StructArgArityMismatch {
+                                            src: self.session.get_named_source(),
+                                            expected_span: expr.span,
+                                            found_span: expr.span,
+                                            expected: fields.len(),
+                                            found: call_expr.args.len(),
+                                        },
+                                    ));
+                                }
+
+                                for (arg, field_ty) in call_expr.args.iter().zip(fields) {
+                                    let field_ty = self.instantiate(&field_ty, &generic_args);
+                                    let arg_ty = self.check_expression(arg);
+                                    self.unify(arg_ty, field_ty);
+                                }
+
+                                Ty::Enum(def_id, generic_args)
+                            }
+                            Path::Unresolved {
+                                res: Res::SelfTy(kind @ SelfTyKind::Impl { .. }),
+                                resolved_segments,
+                                unresolved_segments,
+                            } => {
+                                assert_eq!(unresolved_segments.len(), 1, "the enum variant can only be one segment");
+                                self.prohibit_generic_args(resolved_segments);
+                                self.prohibit_generic_args(unresolved_segments);
+
+                                let ty = self.self_ty_rigid(kind);
+
+                                let variant_ident = &unresolved_segments[0].node.ident.node;
+                                let enum_def = self.collected_types.enums.get(&ty.def_id()).unwrap().clone();
+                                let variant = enum_def
+                                    .variants
+                                    .iter()
+                                    .find(|variant| variant.ident == *variant_ident)
+                                    .unwrap();
+
+                                let fields: Vec<_> = variant
+                                    .fields
+                                    .iter()
+                                    .map(|field| self.collected_types.type_of.get(&field.def_id).unwrap().clone())
+                                    .collect();
+
+                                if call_expr.args.len() != fields.len() {
+                                    self.session.push_error(CompilerError::TypeCheckerError(
+                                        TypeCheckerError::StructArgArityMismatch {
+                                            src: self.session.get_named_source(),
+                                            expected_span: expr.span,
+                                            found_span: expr.span,
+                                            expected: fields.len(),
+                                            found: call_expr.args.len(),
+                                        },
+                                    ));
+                                }
+
+                                for (arg, field_ty) in call_expr.args.iter().zip(fields) {
+                                    let field_ty = self.instantiate(&field_ty, &generic_args);
+                                    let arg_ty = self.check_expression(arg);
+                                    self.unify(arg_ty, field_ty);
+                                }
+
+                                ty
+                            }
+                            _ => panic!(),
                         }
-
-                        for (arg, field_ty) in call_expr.args.iter().zip(fields) {
-                            let field_ty = self.instantiate(&field_ty, &generic_args);
-                            let arg_ty = self.check_expression(arg);
-                            self.unify(arg_ty, field_ty);
-                        }
-
-                        Ty::Enum(def_id, generic_args)
                     }
                     _ => {
                         self.session
