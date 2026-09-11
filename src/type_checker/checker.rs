@@ -1340,6 +1340,7 @@ impl<'hir> TypeChecker<'hir> {
                     if segments.len() == 1
                         && let Res::Local(hir_id) = res
                     {
+                        self.prohibit_generic_args(segments);
                         self.infer_ctxt.types.get(hir_id).unwrap().clone()
                     } else {
                         match res {
