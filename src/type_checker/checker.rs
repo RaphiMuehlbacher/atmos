@@ -1418,18 +1418,26 @@ impl<'hir> TypeChecker<'hir> {
                         match unresolved_segments.len() {
                             0 => self.self_ty_rigid(self_ty_kind),
                             1 => {
-                                let item = self
+                                if let Ty::Enum(enum_def_id, _) = self.self_ty_rigid(self_ty_kind) {
+                                    let args = self.lower_variant_generic_args(
+                                        enum_def_id,
+                                        &[unresolved_segments.clone(), resolved_segments.clone()].concat(),
+                                    );
+                                    return Ty::Enum(enum_def_id, args);
+                                }
+
+                                let assoc_item_ty = self
                                     .collected_types
                                     .assoc_items
                                     .get(impl_block)
                                     .unwrap()
                                     .iter()
                                     .find(|assoc| assoc.ident == unresolved_segments[0].node.ident.node)
-                                    .map(|assoc_def_id| self.collected_types.type_of.get(&assoc_def_id.def_id).unwrap())
-                                    .unwrap();
+                                    .map(|assoc_item| self.collected_types.type_of.get(&assoc_item.def_id).unwrap())
+                                    .expect("emit error: ");
 
                                 // TODO: for now only associated functions
-                                let Ty::Fn(def_id, _) = *item else { panic!() };
+                                let Ty::Fn(def_id, _) = *assoc_item_ty else { panic!() };
                                 let count = self.generics_of(def_id).len();
                                 let args = self.fresh_infer_args(count);
 
