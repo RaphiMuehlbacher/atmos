@@ -1258,7 +1258,14 @@ impl<'a> Parser<'a> {
 
                     let is_tuple_index = ident.node.name.chars().all(|c| c.is_ascii_digit());
 
-                    if !is_tuple_index && self.check(&[TokenKind::OpeningDelimiter(Delimiter::Paren)]) {
+                    if !is_tuple_index
+                        && self.check(&[
+                            TokenKind::OpeningDelimiter(Delimiter::Paren),
+                            TokenKind::Punctuation(Punct::Less),
+                        ])
+                    {
+                        let generic_args = self.parse_generic_args()?;
+
                         let args = self.parse_separated_delimited(
                             TokenKind::OpeningDelimiter(Delimiter::Paren),
                             TokenKind::ClosingDelimiter(Delimiter::Paren),
@@ -1269,7 +1276,7 @@ impl<'a> Parser<'a> {
                         let name = AstNode::new(
                             PathSegment {
                                 ident: ident.clone(),
-                                args: vec![],
+                                args: generic_args,
                             },
                             ident.span.to(self.previous().span),
                         );
