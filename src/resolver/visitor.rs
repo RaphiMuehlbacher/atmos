@@ -376,7 +376,7 @@ pub fn walk_type(visitor: &mut impl Visitor, ty: &AstNode<Ty>) {
             visit_opt!(visitor, visit_type, return_ty.as_ref());
         }
         Ty::Tuple(types) => visit_list!(visitor, visit_type, types),
-        Ty::Err => {}
+        Ty::Err | Ty::Never => {}
     }
 }
 

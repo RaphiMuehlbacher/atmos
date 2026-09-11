@@ -325,6 +325,7 @@ impl<'ast> AstLowerer<'ast> {
 
     fn lower_type(&mut self, ty: &AstNode<ast::Ty>) -> HirNode<hir::Ty> {
         let hir_ty = match &ty.node {
+            ast::Ty::Never => hir::Ty::Never,
             ast::Ty::Path(path) => hir::Ty::Path(self.lower_path(path)),
             ast::Ty::Array(ty, expr) => hir::Ty::Array(Box::new(self.lower_type(ty)), Box::new(self.lower_expr(expr))),
             ast::Ty::Ptr(ty) => hir::Ty::Ptr(Box::new(self.lower_type(ty))),

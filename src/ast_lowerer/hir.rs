@@ -85,6 +85,7 @@ pub enum Ty {
     Ptr(Box<HirNode<Ty>>),
     Fn(Vec<HirNode<Ty>>, Option<Box<HirNode<Ty>>>),
     Tuple(Vec<HirNode<Ty>>),
+    Never,
     Err,
 }
 

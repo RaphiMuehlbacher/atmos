@@ -78,6 +78,7 @@ pub enum Ty {
     Fn(Vec<AstNode<Ty>>, Option<Box<AstNode<Ty>>>),
     Tuple(Vec<AstNode<Ty>>),
     Paren(Box<AstNode<Ty>>),
+    Never,
     Err,
 }
 

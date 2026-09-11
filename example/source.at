@@ -1,16 +1,4 @@
-struct S;
-impl S {
-    fn f<T>(self: Self, t: T) {
-    }
-}
-
-fn main() {
-    let s = S;
-    s.f<u32>(3);
-}
-
-/*
-fn panic() {
+fn panic() -> ! {
     return
 }
 
@@ -23,15 +11,38 @@ impl<T> Option<T> {
     fn unwrap(self: Self) -> T {
         match self {
             Self::Some(inner) => inner,
-            None => panic(),
+            Self::None => panic(),
+        }
+    }
+
+    fn unwrap_or(self: Self, default: T) -> T {
+        match self {
+            Self::Some(inner) => inner,
+            Self::None => default,
+        }
+    }
+
+    fn is_some(self: Self) -> bool {
+        match self {
+            Self::Some(_) => true,
+            Self::None => false,
+        }
+    }
+
+
+    fn map<U>(self: Self, f: fn(T) -> U) -> Option<U> {
+        match self {
+            Self::Some(inner) => Option::Some(f(inner)),
+            Self::None => Option::None,
         }
     }
 }
 
 fn main() {
-
+    let s = Option::Some(3);
+    let i: i32 = s.unwrap();
+    let b: bool = s.is_some();
 }
-*/
 
 /*
 enum Option<T> {

@@ -477,6 +477,7 @@ impl<'hir> TypeCollector<'hir> {
                     ty::Ty::Tuple(types.iter().map(|ty| self.lower_ty(ty)).collect())
                 }
             }
+            hir::Ty::Never => ty::Ty::Never,
             hir::Ty::Err => ty::Ty::Err,
         }
     }

@@ -626,6 +626,7 @@ impl<'hir> TypeChecker<'hir> {
                 Box::new(return_ty.as_ref().map_or(Ty::Unit, |ty| self.lower_ty(ty))),
             ),
             hir::Ty::Tuple(types) => Ty::Tuple(types.iter().map(|ty| self.lower_ty(ty)).collect()),
+            hir::Ty::Never => Ty::Never,
             hir::Ty::Err => Ty::Err,
         }
     }
@@ -1506,8 +1507,8 @@ impl<'hir> TypeChecker<'hir> {
             | (Ty::F64, Ty::F64)
             | (Ty::Str, Ty::Str)
             | (Ty::Bool, Ty::Bool)
-            // TODO: think more about never type coercions
-            | (Ty::Never, Ty::Never)
+            | (Ty::Never, _)
+            | (_, Ty::Never)
             | (Ty::Unit, Ty::Unit) => {}
             (Ty::Infer(InferTy::IntVar(found)), Ty::Infer(InferTy::IntVar(expected))) => {
                 self.infer_ctxt

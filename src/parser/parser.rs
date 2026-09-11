@@ -1009,6 +1009,10 @@ impl<'a> Parser<'a> {
         let lo = self.current().span;
 
         let ty = match &self.current().kind {
+            TokenKind::Punctuation(Punct::Bang) => {
+                self.advance();
+                Ty::Never
+            }
             TokenKind::Keyword(Kw::Fn) => {
                 self.advance();
                 let param_types = self.parse_separated_delimited(
