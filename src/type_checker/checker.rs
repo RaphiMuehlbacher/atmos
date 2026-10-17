@@ -13,7 +13,7 @@ use crate::type_checker::ty::{
 };
 use miette::{SourceOffset, SourceSpan};
 use std::collections::{HashMap, HashSet};
-use std::slice;
+use std::{mem, slice};
 
 #[derive(Default, Debug)]
 pub struct InferCtxt {
@@ -46,6 +46,12 @@ pub enum GenericArgPosition {
     Value,
 }
 
+#[derive(Default)]
+struct LoopCtxt {
+    break_tys: Vec<Ty>,
+    breaks: bool,
+}
+
 pub struct TypeChecker<'hir> {
     session: &'hir Session,
     collected_types: CollectedTypes,
@@ -54,6 +60,7 @@ pub struct TypeChecker<'hir> {
     parent_map: &'hir HashMap<DefId, DefId>,
     infer_ctxt: InferCtxt,
     return_ty: Option<Ty>,
+    loop_ctxt: LoopCtxt,
 }
 
 impl<'hir> TypeChecker<'hir> {
@@ -72,6 +79,7 @@ impl<'hir> TypeChecker<'hir> {
             collected_types,
             infer_ctxt: InferCtxt::default(),
             return_ty: None,
+            loop_ctxt: Default::default(),
         }
     }
 
@@ -115,6 +123,8 @@ impl<'hir> TypeChecker<'hir> {
     }
 
     fn check_block_with_expectation(&mut self, block: &HirNode<BlockExpr>, expected: Ty) -> Ty {
+        let mut block_diverges = false;
+
         for stmt in &block.node.stmts {
             match &stmt.node {
                 Stmt::Let(let_stmt) => {
@@ -133,19 +143,34 @@ impl<'hir> TypeChecker<'hir> {
                 // All items already get checked by iterating over all defs in `check`
                 Stmt::Item(_) => continue,
                 Stmt::Semi(expr) | Stmt::Expr(expr) => {
-                    self.check_expression(expr);
+                    let ty = self.check_expression(expr);
+                    if self.is_divergent(ty) {
+                        block_diverges = true;
+                    }
                 }
             }
         }
 
+        // if a block definitely diverges and has no tail expression it becomes !
+        // if no tail it becomes ()
         match &block.node.expr {
             Some(expr) => {
                 let ty = self.check_expression(expr);
-                self.unify(ty.clone(), expected);
-                ty
+                if block_diverges {
+                    Ty::Never
+                } else {
+                    self.unify(ty.clone(), expected);
+                    ty
+                }
             }
-            // TODO: fix when implementing divergence
-            None => Ty::Never,
+            None => {
+                if block_diverges {
+                    Ty::Never
+                } else {
+                    self.unify(Ty::Unit, expected);
+                    Ty::Unit
+                }
+            }
         }
     }
 
@@ -625,7 +650,13 @@ impl<'hir> TypeChecker<'hir> {
                 params.iter().map(|param| self.lower_ty(param)).collect(),
                 Box::new(return_ty.as_ref().map_or(Ty::Unit, |ty| self.lower_ty(ty))),
             ),
-            hir::Ty::Tuple(types) => Ty::Tuple(types.iter().map(|ty| self.lower_ty(ty)).collect()),
+            hir::Ty::Tuple(types) => {
+                if types.is_empty() {
+                    ty::Ty::Unit
+                } else {
+                    ty::Ty::Tuple(types.iter().map(|ty| self.lower_ty(ty)).collect())
+                }
+            }
             hir::Ty::Never => Ty::Never,
             hir::Ty::Err => Ty::Err,
         }
@@ -1324,11 +1355,31 @@ impl<'hir> TypeChecker<'hir> {
             }
             hir::Expr::Cast(cast_expr) => todo!(),
             hir::Expr::Return(expr) => {
+                // if there is an expression the return expression itself has type !
+                // a bare `return;` has an implicit unit type
                 let return_ty = expr.as_ref().map_or(Ty::Unit, |expr| self.check_expression(expr));
                 self.unify(return_ty, self.return_ty.clone().unwrap());
                 Ty::Never
             }
-            hir::Expr::Loop(loop_expr) => todo!(),
+            hir::Expr::Loop(loop_expr) => {
+                let prev_loop_ctxt = mem::take(&mut self.loop_ctxt);
+                self.loop_ctxt.break_tys = vec![];
+                self.check_block(&loop_expr.body);
+
+                // a loop with no reachable break is considered diverging
+                // a break whose value diverges, does not make the loop breakable
+                if self.loop_ctxt.break_tys.is_empty() && !self.loop_ctxt.breaks {
+                    self.loop_ctxt = prev_loop_ctxt;
+                    Ty::Never
+                } else {
+                    let break_tys = mem::take(&mut self.loop_ctxt.break_tys);
+                    for w in break_tys.windows(2) {
+                        self.unify(w[0].clone(), w[1].clone());
+                    }
+                    self.loop_ctxt = prev_loop_ctxt;
+                    break_tys[0].clone()
+                }
+            }
             hir::Expr::Assign(assign_expr) => {
                 let lhs = self.check_expression(&assign_expr.lhs);
                 let rhs = self.check_expression(&assign_expr.rhs);
@@ -1496,8 +1547,21 @@ impl<'hir> TypeChecker<'hir> {
                 },
             },
             hir::Expr::AddrOf(expr) => self.check_expression(expr),
-            hir::Expr::Break(expr) => expr.as_ref().map_or(Ty::Unit, |expr| self.check_expression(expr)),
-            hir::Expr::Continue => Ty::Unit,
+            hir::Expr::Break(expr) => {
+                // A bare `break`; is equivalent to `break ();`
+                let break_ty = expr.as_ref().map_or(Ty::Unit, |expr| self.check_expression(expr));
+
+                self.loop_ctxt.break_tys.push(break_ty.clone());
+
+                // If we encountered a `break`, then (no surprise) it may be possible to break from the
+                // loop... unless the value being returned from the loop diverges itself, e.g.
+                // `break return 5` or `break loop {}`.
+                self.loop_ctxt.breaks |= !self.is_divergent(break_ty);
+
+                // the type of a `break` is always `!`, since it diverges
+                Ty::Never
+            }
+            hir::Expr::Continue => Ty::Never,
             hir::Expr::Literal(literal) => match literal {
                 hir::Literal::Bool(_) => Ty::Bool,
                 hir::Literal::Int(int_kind) => match int_kind {
@@ -1518,13 +1582,14 @@ impl<'hir> TypeChecker<'hir> {
             }
             hir::Expr::Unary(unary_expr) => todo!(),
             hir::Expr::If(if_expr) => {
+                // An if expression diverges if the condition, or both branches diverge
                 let condition = self.check_expression(&if_expr.condition);
                 self.unify(condition, Ty::Bool);
 
                 let then_branch = self.check_block(&if_expr.then_branch);
                 let else_ty = match &if_expr.else_branch {
                     Some(block) => self.check_block(block),
-                    None => Ty::Never,
+                    None => Ty::Unit,
                 };
                 self.unify(then_branch.clone(), else_ty);
                 then_branch
@@ -1562,7 +1627,6 @@ impl<'hir> TypeChecker<'hir> {
             | (Ty::Str, Ty::Str)
             | (Ty::Bool, Ty::Bool)
             | (Ty::Never, _)
-            | (_, Ty::Never)
             | (Ty::Unit, Ty::Unit) => {}
             (Ty::Infer(InferTy::IntVar(found)), Ty::Infer(InferTy::IntVar(expected))) => {
                 self.infer_ctxt
@@ -1699,6 +1763,11 @@ impl<'hir> TypeChecker<'hir> {
                 GenericArg::Const(_) => todo!(),
             })
             .collect()
+    }
+
+    fn is_divergent(&self, ty: Ty) -> bool {
+        let ty = self.shallow_resolve(ty);
+        matches!(ty, Ty::Never)
     }
 
     fn pretty_print_ty(&self, ty: &Ty) -> String {
