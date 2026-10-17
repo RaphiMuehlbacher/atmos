@@ -1353,7 +1353,13 @@ impl<'hir> TypeChecker<'hir> {
             hir::Expr::Tuple(tuple_expr) => {
                 Ty::Tuple(tuple_expr.iter().map(|expr| self.check_expression(expr)).collect())
             }
-            hir::Expr::Cast(cast_expr) => todo!(),
+            hir::Expr::Cast(cast_expr) => {
+                let expr_ty = self.check_expression(&cast_expr.expr);
+                let ty = self.lower_ty(&cast_expr.ty);
+                // TODO: properly handle casts later
+                // try coercion first and defer check
+                ty
+            }
             hir::Expr::Return(expr) => {
                 // if there is an expression the return expression itself has type !
                 // a bare `return;` has an implicit unit type
